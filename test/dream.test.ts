@@ -14,6 +14,7 @@ import { Metadata } from '../server/metadata.ts'
 import { docs as lineageDocs } from '../extensions/lineage/server.ts'
 import { Messages } from '../extensions/messages/api.ts'
 import { Todos } from '../extensions/todos/server.ts'
+import { callTrace } from '../server/trace.ts'
 import { Standing } from '../extensions/subagents/api.ts'
 import { ContextUsageDoc } from '../extensions/conversations/api.ts'
 import automations, {
@@ -355,5 +356,51 @@ it('reads tool numbers from the trace, with unused tools and frequent errors', a
       },
     ],
   })
+  // A range keeps the calls that started in [since, until): here only the failed edit.
+  expect(toolStats(file, ['edit', 'read'], { since: 150, until: 300 })).toEqual({
+    since: 200,
+    calls: 1,
+    tools: [{ name: 'edit', calls: 1, failed: 1, avgMs: 30 }],
+    unused: ['read'],
+    errors: [
+      {
+        name: 'edit',
+        error: 'Could not find the exact text',
+        count: 1,
+        examples: [{ at: '#7/42', args: '{"path":"a.ts"}' }],
+      },
+    ],
+  })
   expect(toolStats(join(await temp(), 'none.sqlite'), ['read']).unused).toEqual(['read'])
+})
+
+it('counts a returned error, such as a nonzero exit, as a failed call', async () => {
+  const file = join(await temp(), 'trace.sqlite')
+  const trace = callTrace(file)
+  trace.open()
+  const [bash] = trace.tools({
+    name: 'coding-tools',
+    tools: [
+      {
+        name: 'bash',
+        execute: async () => ({
+          isError: true,
+          diagnostics: [
+            { severity: 'error', code: 'exit_code', message: 'Command exited with code 1' },
+          ],
+        }),
+      } as never,
+    ],
+  }).tools!
+  await bash.execute(
+    {},
+    { conversationId: 1, taskId: 1, callId: 'c', getTask: async () => undefined } as never,
+    {} as never,
+  )
+  trace.close()
+  expect(toolStats(file, ['bash'], { since: Date.parse('2026-01-01T00:00:00Z') })).toMatchObject({
+    calls: 1,
+    tools: [{ name: 'bash', calls: 1, failed: 1 }],
+    errors: [{ name: 'bash', error: 'Command exited with code 1', count: 1 }],
+  })
 })

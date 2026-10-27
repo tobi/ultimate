@@ -118,34 +118,52 @@ export function prepare(args: unknown, now: number): Prepared {
   }
 }
 
-/** Tool calls in `trace.sqlite`: per tool, the most frequent errors, and `enabled` tools never called in its window. */
-export function toolStats(database: string, enabled: readonly string[]): ToolStats {
+/** An optional ISO time argument of `stats`, as epoch milliseconds. */
+const instant = (value: unknown, name: string) => {
+  if (value === undefined) return undefined
+  const at = typeof value === 'string' ? Date.parse(value) : Number.NaN
+  if (Number.isNaN(at)) throw new Error(`${name} must be an ISO time`)
+  return at
+}
+
+/**
+ * Tool calls in `trace.sqlite` that started in `[since, until)` (epoch ms; default the whole window): per tool, the
+ * most frequent errors, and `enabled` tools never called. A failure is a thrown error or a returned error result,
+ * such as a nonzero exit.
+ */
+export function toolStats(
+  database: string,
+  enabled: readonly string[],
+  range: { since?: number; until?: number } = {},
+): ToolStats {
   if (!existsSync(database))
     return { calls: 0, tools: [], unused: [...enabled].toSorted(), errors: [] }
   const db = new DatabaseSync(database, { readOnly: true })
   try {
+    const where = "kind = 'tool' AND at >= ? AND at < ?"
+    const bounds = [range.since ?? 0, range.until ?? Number.MAX_SAFE_INTEGER]
     const window = db
-      .prepare("SELECT min(at) AS since, count(*) AS calls FROM calls WHERE kind = 'tool'")
-      .get() as { since: number | null; calls: number }
+      .prepare(`SELECT min(at) AS since, count(*) AS calls FROM calls WHERE ${where}`)
+      .get(...bounds) as { since: number | null; calls: number }
     const tools = (
       db
         .prepare(
-          "SELECT name, count(*) AS calls, sum(ok = 0) AS failed, avg(ms) AS avgMs FROM calls WHERE kind = 'tool' GROUP BY name ORDER BY calls DESC",
+          `SELECT name, count(*) AS calls, sum(ok = 0) AS failed, avg(ms) AS avgMs FROM calls WHERE ${where} GROUP BY name ORDER BY calls DESC`,
         )
-        .all() as { name: string; calls: number; failed: number; avgMs: number }[]
+        .all(...bounds) as { name: string; calls: number; failed: number; avgMs: number }[]
     ).map((row) => ({ ...row, avgMs: Math.round(row.avgMs) }))
     const groups = db
       .prepare(
-        "SELECT name, substr(error, 1, 160) AS error, count(*) AS count FROM calls WHERE kind = 'tool' AND ok = 0 GROUP BY name, substr(error, 1, 160) ORDER BY count DESC LIMIT 20",
+        `SELECT name, substr(error, 1, 160) AS error, count(*) AS count FROM calls WHERE ${where} AND ok = 0 GROUP BY name, substr(error, 1, 160) ORDER BY count DESC LIMIT 20`,
       )
-      .all() as { name: string; error: string; count: number }[]
+      .all(...bounds) as { name: string; error: string; count: number }[]
     const sample = db.prepare(
-      "SELECT conversation, entry, substr(args, 1, 120) AS args FROM calls WHERE kind = 'tool' AND ok = 0 AND name = ? AND substr(error, 1, 160) = ? ORDER BY at DESC LIMIT 2",
+      `SELECT conversation, entry, substr(args, 1, 120) AS args FROM calls WHERE ${where} AND ok = 0 AND name = ? AND substr(error, 1, 160) = ? ORDER BY at DESC LIMIT 2`,
     )
     const errors = groups.map((group) => ({
       ...group,
       examples: (
-        sample.all(group.name, group.error) as {
+        sample.all(...bounds, group.name, group.error) as {
           conversation: number | null
           entry: number | null
           args: string | null
@@ -418,15 +436,17 @@ export const actions = {
     host.harness().resume()
     return prepared
   }),
-  stats: implementAction(StatsAction, (_args, { host }) =>
-    toolStats(
+  stats: implementAction(StatsAction, (args, { host }) => {
+    const input = fields(args)
+    return toolStats(
       host.chapter.trace,
       host
         .extensions()
         .filter((item) => item.enabled)
         .flatMap((item) => item.server?.tools.map((tool) => tool.name) ?? []),
-    ),
-  ),
+      { since: instant(input.since, 'since'), until: instant(input.until, 'until') },
+    )
+  }),
 }
 
 export default function dream(host: ExtensionHost) {
