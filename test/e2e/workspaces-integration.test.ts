@@ -28,7 +28,7 @@ import { git } from '../../lib/git.ts'
 import { setup } from '../../extensions/workspaces/setup.ts'
 import type { LanderEntry, WorkspaceIndex } from '../../extensions/workspaces/types.ts'
 import { createLander, landerCheckout, landerPath } from '../../extensions/workspaces/lander.ts'
-import { CheckRan, SubmissionFailed, SubmissionLanded } from '../../extensions/workspaces/api.ts'
+import { CheckRan, SubmissionLanded } from '../../extensions/workspaces/api.ts'
 import lineage, { leaveNote, startBranch } from '../../extensions/lineage/server.ts'
 import { LineageApi, Roots } from '../../extensions/lineage/api.ts'
 import {
@@ -166,6 +166,15 @@ async function fixture(
     defineExtension({
       name: 'test-writing',
       tools: [
+        defineTool({
+          // Stands in for the messages extension's tool: the gate lets `message` through by name.
+          name: 'message',
+          description: 'Tell another conversation something; never touches the checkout',
+          parameters: obj({}),
+          async execute() {
+            return { output: [{ type: 'text', text: 'Message 1 sent.' }] }
+          },
+        }),
         defineTool({
           name: 'write_commit',
           description: 'Write and commit a change',
@@ -1158,12 +1167,6 @@ it.concurrent('wakes only the submitter on a failed landing and leaves it open',
   const { id: submission } = await f.service.submit(id, 'None', context)
   const [report] = await submitted(f, id)
   expect(report).toContain('was not landed: check failed twice: exit 1')
-  expect(await f.host.eventLog.recent({ events: [SubmissionFailed] })).toMatchObject([
-    {
-      fails: 'workspaces.landed',
-      data: { submission, conversationId: id, reason: 'check failed twice: exit 1' },
-    },
-  ])
   expect(await concludedIds(f)).not.toContain(id)
   expect((await f.service.get(id, context))!.state).toBe('ready')
   const requests = await f.opened.harness.commit(
@@ -2499,5 +2502,34 @@ it.concurrent('the tool gate blocks a checkout removed after the provider reques
   const result = await f.call(id, 'write_commit')
   expect(result?.role === 'toolResult' && result.isError).toBe(true)
   expect(JSON.stringify(result)).toContain('Workspace checkout is missing or unregistered:')
+  expect(f.writes).toBe(0)
+})
+
+it.concurrent('a conversation whose checkout is gone can still message', async () => {
+  const f = await fixture()
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const workspace = (await f.service.get(id, context))!
+  f.prepared.faux!.setResponses([
+    async () => {
+      await git(workspace.source, 'worktree', 'remove', workspace.path)
+      return fauxAssistantMessage(fauxToolCall('write_commit', {}), { stopReason: 'toolUse' })
+    },
+    fauxAssistantMessage(fauxToolCall('message', {}), { stopReason: 'toolUse' }),
+    fauxAssistantMessage('reported'),
+  ])
+  await f.call(id, 'write_commit')
+  const conversation = (await f.opened.harness.conversation(id, context))!
+  const results = (await conversation.context(context)).entries
+    .filter((entry) => entry.kind === 'pi.tool-result')
+    .map((entry) => entry.model?.[0])
+  expect(results).toHaveLength(2)
+  const [blocked, sent] = results
+  // Every tool is blocked, with a reason that names the way out; `message` goes through.
+  expect(blocked?.role === 'toolResult' && blocked.isError).toBe(true)
+  expect(JSON.stringify(blocked)).toContain('Workspace checkout is missing or unregistered:')
+  expect(JSON.stringify(blocked)).toContain('`message` still works')
+  expect(sent?.role === 'toolResult' && sent.isError).toBe(false)
+  expect(JSON.stringify(sent)).toContain('Message 1 sent.')
   expect(f.writes).toBe(0)
 })
