@@ -47,10 +47,17 @@ composer renderers), `commands.md`, `documents.md`, `surfaces.md`, `actions.md`,
 - An outcome a user waits for gets a card that matches existing ones (`extensions/subagents/messages.tsx`,
   `extensions/workspaces/log.tsx`), never raw Markdown.
 - Theme tokens only (`text-brand`, `text-muted-foreground`, `border-border/70`); dense and quiet, `font-mono` for meta.
+- An extension added after the host started may never get its Tailwind classes compiled: the host compiles the classes
+  it saw at start, so a class no other extension uses can render as nothing. Use classes the host already uses, and an
+  inline `style` for layout such as a grid template (never for colours). Markup that is right but renders unstyled is
+  this, not the markup.
+- `useAction` clears its `data` whenever its `args` change. A result that must survive an args change (a 30 s tick, a
+  `force` flag) goes in a second `useAction` whose args stay fixed; show the newer of the two.
 
 ## 5. Verify
 
 1. Server actions first: call them with codemode `ultimate.action(extension, action, args)`.
 2. `pnpm check` in the clone (format, lint, types, import boundaries, the dependency graph).
 3. Tests for behaviour behind it: fast tests in `test/`, no real waits.
-4. Look at it: follow the `verify-ui` skill (a preview of your checkout for anything outside the running host).
+4. Look at it: follow the `verify-ui` skill (a preview of your checkout for anything outside the running host), and
+   watch new data arrive in it, not only that it refetches.
