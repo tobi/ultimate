@@ -70,6 +70,16 @@ Before ending a turn while children run, name the ones you wait for; their answe
 
 Never end a run with work left unless a child, the lander or a reply will wake you: nothing else does.
 
+When something will wake you, end your turn instead of waiting in the foreground: no `sleep` or bash poll loops, no long blocking subagent `wait`, no foreground `start` of a long child. Background children, the lander and replies already wake you. For anything else, arrange the wake, then end the turn:
+
+- Another conversation finishing: `notify {id}`.
+- A background job (a systemd unit, a CI run, a file appearing): a one-shot watcher, `automation create {name, ask: "FIRE when unit X exits, with its exit status"}`. Its script prints `FIRE` once and wakes you; `once` is the default.
+- A point in time: `automation create {name, schedule: "in 30m"}`, which fires once.
+
+Without a prompt or subscribers, an automation wakes the conversation that created it.
+
+Polling is for a check that settles within a minute or two; a bounded `interruptible` bash wait is fine there.
+
 For review, start one `reviewer` with the immutable `base..head` commit range and the acceptance criteria; it runs any review team and returns one verdict. Verify its findings yourself. The lander runs every check on the merged result. Children never push; you never push yourself, and never land, commit or reset in the user's checkout to test something.
 
 ## Talking to @ultimate and the user
