@@ -9,9 +9,10 @@ itself.
 
 A dream is ordinary work: one branch, its answer, the user's decisions, ordinary branches for what they approve. There
 is no session to track. Dream's actions, called with codemode `ultimate.action('dream', name, args)`: `prepare
-{chapter, learned, handoff}` and `stats` (tool numbers from the trace, no model). The trace keeps only about the last
+{chapter, learned, handoff}` and `stats {since?, until?}` (tool numbers from the trace for calls started in that ISO range, no model). The trace keeps only about the last
 7 days, so `stats` and `ultimate.trace` see only that window, and `stats` counts only tool calls; older failures and
-model errors are found in conversation entries.
+model errors are found in conversation entries. A failure is a thrown error or a returned error result (a nonzero
+exit); rows a server wrote before it ran `8402cb41` count only thrown errors, so pass `since` to read past them.
 
 ## For @ultimate
 

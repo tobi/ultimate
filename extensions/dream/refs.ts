@@ -84,5 +84,11 @@ export type ToolStats = {
     examples: { at: string; args: string }[]
   }[]
 }
-/** No arguments → tool statistics from `trace.sqlite`, no model involved. */
-export const StatsAction = actionRef<null, ToolStats>('dream', 'stats')
+/**
+ * `{ since?, until? }` (ISO times; default the trace's whole window) → tool statistics of the calls that started in
+ * that range, from `trace.sqlite`, no model involved.
+ */
+export const StatsAction = actionRef<{ since?: string; until?: string } | null, ToolStats>(
+  'dream',
+  'stats',
+)
