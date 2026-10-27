@@ -12,6 +12,11 @@ Never claim a UI change works without an image of it.
 - `web/` and built-in `extensions/` changes in the host's own checkout reload in the running host: omit `url`.
 - A worktree, a branch or a project `.ultimate/extensions/` change does not reach the host: start a preview of the
   checkout (`instance start`) and pass its URL. `server/` or `shared/` changes need a fresh preview.
+- Check that the preview loaded what you changed. `instance start` runs the workspace's git root as the project, so a
+  project in a subdirectory of its repository (`<repo>/some/dir/.ultimate/extensions/`) is not loaded. If your
+  extension is missing there, start a scratch server by hand from the clone with the subdirectory as its project
+  (`pnpm start <dir> --port 4799 --no-open`, with the scratch home of [docs/running.md](../../docs/running.md)); its
+  `.ultimate/` loads only once that project is trusted ([docs/settings.md](../../docs/settings.md)).
 
 ## How
 
@@ -44,12 +49,14 @@ Never claim a UI change works without an image of it.
 ## What to check
 
 1. Every state: loading, empty, error, one item, many items, a long title.
-2. It matches its neighbours: an existing card or panel next to it, theme tokens, spacing.
-3. Transcript UI, on a long conversation:
+1. Live data: in a panel that refreshes, make the data change (a new run, a new row) and see the new value on screen.
+   A refetch that happens is not data that shows: a `useAction` whose args change drops its data until it answers.
+1. It matches its neighbours: an existing card or panel next to it, theme tokens, spacing.
+1. Transcript UI, on a long conversation:
    1. scrollback: scroll up and back down; nothing jumps or reflows;
    2. live streaming: watch a reply and its tool calls stream in;
    3. folding: fold and unfold tool calls and update groups;
    4. phone width: a screenshot at `width: 390`.
-4. No new console errors.
+1. No new console errors.
 
 Say what you could not reach as unverified, with the reason.
