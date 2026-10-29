@@ -19,7 +19,7 @@ import {
   LiveDoc,
   ROOT_CONVERSATION_ID,
 } from '@earendil-works/pi-durable'
-import type { ConversationId, Task, TaskId } from '@earendil-works/pi-durable'
+import type { ConversationId, Task, TaskId, Tx } from '@earendil-works/pi-durable'
 import type { Context, JsonValue } from '@earendil-works/chord'
 import { afterEach, expect, it } from 'vitest'
 import { context, prepareHarness } from '../server/harness.ts'
@@ -117,6 +117,7 @@ async function fixture(
   })
   let opened: OpenHost
   let service!: MessagesService
+  let branches!: { working: (tx: Tx, id: ConversationId) => Promise<boolean> }
   const hold = gate()
   let holding = false
   const openers: (() => Promise<void>)[] = []
@@ -148,9 +149,10 @@ async function fixture(
     metadata: Metadata,
     emit,
     harness: () => opened.harness,
-    // Messages also implements workspaces' branches point; the tests call its own service.
-    implement: (api: { name: string }, value: MessagesService) => {
-      if (api.name === 'messages') service = value
+    // Messages also implements workspaces' branches point, which the lander asks about a landed branch.
+    implement: (api: { name: string }, value: unknown) => {
+      if (api.name === 'messages') service = value as MessagesService
+      if (api.name === 'workspaces.branches') branches = value as typeof branches
     },
     want: provider,
     need: provider,
@@ -318,6 +320,9 @@ async function fixture(
   return {
     host,
     provided,
+    /** What the lander asks of a landed branch. */
+    working: (id: number) =>
+      opened.harness.commit((tx) => branches.working(tx, id as ConversationId), context),
     get opened() {
       return opened
     },
@@ -725,6 +730,13 @@ it('answers questions to the user through answer cards or input in the sender co
   await f.opened.harness.waitForIdle(context)
   expect(await state(first.id)).toBe('answered')
   expect(await state(second.id)).toBe('delivered')
+  // With two cards open the answer reads as the answer to its own: the asker never has to guess which.
+  await until(async () =>
+    f.observed.some((t) =>
+      t.includes(`Answer to message ${first.id}:\nQ: Which command?\nA: Both`),
+    ),
+  )
+  expect(f.observed.filter((t) => t.includes(`Answer to message ${second.id}`))).toEqual([])
   // Each answer is the user's input to the asker, recorded once with its reply's message and never its text.
   const inputs = await eventHost(() => f.opened.harness, 'test').eventLog.recent({
     events: [UserInputEvent],
@@ -1366,7 +1378,9 @@ it('lets a branch ask the user directly and leaves passive question and answer n
   expect(JSON.stringify(answered.model)).toContain('A: Yes')
   const reply = (await f.log())!.messages.find((m) => m.from === 'user' && m.re === question.id)!
   expect(reply).toMatchObject({ to: b.id, text, state: 'answered', entry: expect.any(Number) })
-  expect(f.observed).toContainEqual(expect.stringContaining(`Message from user:\n${text}`))
+  expect(f.observed).toContainEqual(
+    expect.stringContaining(`Message from user:\nAnswer to message ${question.id}:\n${text}`),
+  )
   // The user's answer is input, so the branch's final result still reports to its starter.
   expect((await b.from()).find((m) => m.report)).toMatchObject({
     to: 1,
@@ -1442,6 +1456,28 @@ it("leaves a branch's final answer as a note while its work is under way", async
     undefined,
   ])
   expect(view.entries.filter((e) => e.id > note!.id && e.kind === 'pi.assistant')).toHaveLength(0)
+})
+it('counts an automation a branch waits on as work under way, so its answer is a note until it is done', async () => {
+  const f = await fixture()
+  const b = await branched(f)
+  const waiting = new Set<number>()
+  f.provided.set('messages.waits', {
+    subscribed: async (_tx: unknown, id: number) => waiting.has(id),
+  })
+  // The lander concludes a landed branch only when this is false.
+  expect(await f.working(b.id)).toBe(false)
+  waiting.add(b.id)
+  expect(await f.working(b.id)).toBe(true)
+  await b.later('Emit running; waiting on the watcher')
+  await until(async () => (await b.from()).length === 2)
+  expect((await b.from())[1]).toMatchObject({ reply: false })
+  expect((await b.from())[1].report).toBeUndefined()
+  // The automation is done: the next answer is the branch's report.
+  waiting.clear()
+  expect(await f.working(b.id)).toBe(false)
+  await b.later('Emit finished')
+  await until(async () => (await b.from()).length === 3)
+  expect((await b.from())[2]).toMatchObject({ reply: false, report: true })
 })
 it('leaves the final answer of a branch its landing concluded as a note, since the landing woke the starter', async () => {
   const f = await fixture()
