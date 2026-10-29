@@ -37,6 +37,9 @@ import type {
 } from './types.ts'
 import type { KeptWork } from '../conversations/types.ts'
 
+/** How long the measured disk the worktrees take is reused: measuring reads every file's metadata. */
+const diskAge = 600_000
+
 /** How long a checkout's uncommitted-changes answer is kept while nothing visible to git's stat cache has changed. */
 const dirtyAge = 120_000
 
@@ -1163,10 +1166,11 @@ export function workspaces(host: Host) {
     /**
      * The disk the worktrees directory takes: `bytes` counts every checkout's blocks, `real` counts blocks shared
      * between them once (btrfs only, null elsewhere). Measuring takes seconds, so one runs at a time and its result is
-     * reused for a minute.
+     * reused for `diskAge`, unless `force`.
      */
-    disk(): Promise<WorkspaceDisk> {
-      if (disk.last && Date.now() - disk.last.at < 60_000) return Promise.resolve(disk.last)
+    disk(force = false): Promise<WorkspaceDisk> {
+      if (!force && disk.last && Date.now() - disk.last.at < diskAge)
+        return Promise.resolve(disk.last)
       if (disk.running) return disk.running
       const directory = join(host.home, 'worktrees')
       const promise: Promise<WorkspaceDisk> = Promise.all([

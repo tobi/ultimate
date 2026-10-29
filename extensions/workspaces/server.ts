@@ -131,7 +131,9 @@ export const actions = {
     return workspaces(host).discard(workspaceId(args), context)
   },
   stats: implementAction(StatsAction, (_args, { host }) => workspaces(host).stats(context)),
-  disk: implementAction(DiskAction, (_args, { host }) => workspaces(host).disk()),
+  disk: implementAction(DiskAction, (args, { host }) =>
+    workspaces(host).disk((args as { force?: unknown } | null)?.force === true),
+  ),
 }
 export default function workspaceExtension(host: ExtensionHost) {
   // What a landing asks about its branch is an extension point, wanted where the lander calls it.

@@ -16,6 +16,8 @@ vi.mock('@/sdk', async () => ({
     [{ id: 12, title: 'Build the Activity feed' }].find((item: { id: number }) => item.id === id),
   useWorkspaceIndex: () => ({ queue: [], results: {} }),
 }))
+// The feed reaches the workspaces panel through its ui.tsx; the panel's notices go to the browser client's store.
+vi.mock('@/sdk/client', () => ({ store: { notify: () => {} } }))
 vi.mock('../../extensions/workspaces/landing.tsx', () => ({
   useGithubRepo: () => 'github.com/hazat/ultimate',
   CommitCount: ({ count, href }: { count: number; href?: string }) =>

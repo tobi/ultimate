@@ -24,8 +24,11 @@ export const ProgressAction = actionRef<{ ids: number[] }, KeptWork[]>('workspac
 export const PendingAction = actionRef<{ ids: number[] }, KeptWork[]>('workspaces', 'pending')
 /** No arguments → how many worktrees there are in total and in each state, for the workspaces panel. */
 export const StatsAction = actionRef<null, WorkspaceStats>('workspaces', 'stats')
-/** No arguments → the disk space the worktrees take (on btrfs also with shared blocks counted once), at most a minute old. */
-export const DiskAction = actionRef<null, WorkspaceDisk>('workspaces', 'disk')
+/**
+ * No arguments → the disk space the worktrees take (on btrfs also with shared blocks counted once), at most ten
+ * minutes old; `{ force: true }` measures again.
+ */
+export const DiskAction = actionRef<{ force?: boolean } | null, WorkspaceDisk>('workspaces', 'disk')
 /**
  * No arguments → whether the project can start isolated conversations; once it can, the project's lander is stood up
  * if it has none.

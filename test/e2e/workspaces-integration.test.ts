@@ -1458,7 +1458,7 @@ it.concurrent('fast-forwards the worktree that has the target checked out, past 
   expect(reports.at(-1)).toContain('overlap.txt')
   expect(await git(elsewhere, 'rev-parse', 'HEAD')).toBe(tip)
 })
-it.concurrent('counts checkouts by state, commits and uncommitted changes, and measures their disk once a minute', async () => {
+it.concurrent('counts checkouts by state, commits and uncommitted changes, and measures their disk once in ten minutes unless forced', async () => {
   const f = await fixture()
   const landed = await f.create()
   const ahead = await f.create()
@@ -1485,6 +1485,8 @@ it.concurrent('counts checkouts by state, commits and uncommitted changes, and m
   const disk = await actions.disk({}, { host: f.host } as ActionContext)
   expect(disk.bytes).toBeGreaterThan(0)
   expect(await actions.disk({}, { host: f.host } as ActionContext)).toBe(disk)
+  // Only `force` measures again within the age.
+  expect(await actions.disk({ force: true }, { host: f.host } as ActionContext)).not.toBe(disk)
   // Counting never removes anything.
   expect((await f.service.get(landed, context))!.state).toBe('ready')
 })

@@ -2,8 +2,10 @@ import { CopyIcon, RefreshCwIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef } from 'react'
 import { Row, Rows } from '@/components/ui/rows'
 import {
+  api,
   cn,
   elidePath,
+  errorMessage,
   formatBytes,
   shortenPath,
   useAction,
@@ -11,6 +13,7 @@ import {
   useConversationSummary,
   useSystem,
 } from '@/sdk'
+import { store } from '@/sdk/client'
 import { ConversationRef } from '../conversations/ui.tsx'
 import { stateLabel, useLanderQueue, useWorkspaces } from './data.tsx'
 import type { WorkspaceConversation } from './data.tsx'
@@ -200,14 +203,12 @@ function Stats() {
     }, statsDelay)
     return () => clearTimeout(timer)
   }, [states, refetch])
-  useEffect(() => {
-    const refresh = () => {
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-      void refetchDisk()
-    }
-    window.addEventListener('focus', refresh)
-    return () => window.removeEventListener('focus', refresh)
-  }, [refetchDisk])
+  // Measuring reads every file's metadata, so only the button measures again; the server keeps its answer for ten minutes.
+  const measure = () =>
+    api
+      .action(DiskAction, { force: true })
+      .then(() => refetchDisk())
+      .catch((failure: unknown) => store.notify({ level: 'error', message: errorMessage(failure) }))
   if (error) return <p className="font-mono text-[11px] text-error">{error.message}</p>
   if (!data) return null
   return (
@@ -242,6 +243,15 @@ function Stats() {
         </Row>
         <Row label="uncommitted">{data.dirty}</Row>
         <Row label="disk">
+          <button
+            aria-label="Measure the disk again"
+            className="mr-1 cursor-pointer rounded-sm p-0.5 text-muted-foreground hover:text-foreground disabled:opacity-50"
+            disabled={disk.loading}
+            onClick={() => void measure()}
+            type="button"
+          >
+            <RefreshCwIcon className={cn('size-3', disk.loading && 'animate-spin')} />
+          </button>
           <span
             className="truncate"
             title="Each checkout's blocks added up; copy-on-write checkouts share many of them"

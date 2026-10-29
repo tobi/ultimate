@@ -96,7 +96,7 @@ for the current checkout to finish, not the remaining batch.
 unlanded branch history, including after explicit discard.
 `stats` counts checkouts by state, ready ones by commits (landed on the target, ahead, none yet) and uncommitted
 changes; `disk` measures the worktrees directory with `du`, and on btrfs also the real size with shared blocks counted
-once (`btrfs filesystem du`). Measuring takes seconds, so one runs at a time and its result is reused for a minute.
+once (`btrfs filesystem du`). Measuring takes seconds, so one runs at a time and its result is reused for ten minutes (`disk {force: true}` measures again; the panel's refresh button does).
 
 ## Lander
 
