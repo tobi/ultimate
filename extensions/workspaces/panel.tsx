@@ -1,5 +1,5 @@
 import { CopyIcon, RefreshCwIcon } from 'lucide-react'
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Row, Rows } from '@/components/ui/rows'
 import {
   cn,
@@ -176,6 +176,9 @@ const parts = (entries: [number, string][]) =>
     .map(([count, label]) => `${count} ${label}`)
     .join(' · ') || 'none'
 
+/** How long the checkouts' state must stay as it is before they are counted again. */
+const statsDelay = 1500
+
 /** How many checkouts there are, what their commits are, and the disk they take. */
 function Stats() {
   const records = useWorkspaces()
@@ -185,20 +188,26 @@ function Stats() {
   const states = Object.entries(records)
     .map(([id, workspace]) => `${id}:${workspace.state}:${workspace.landed ?? ''}`)
     .join()
+  // `useAction` counts once on mount.
+  const counted = useRef(states)
   useEffect(() => {
-    // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-    void refetch()
+    if (counted.current === states) return undefined
+    // Counting runs git in every checkout: wait for a burst of state changes to settle, and never count on focus.
+    const timer = setTimeout(() => {
+      counted.current = states
+      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
+      void refetch()
+    }, statsDelay)
+    return () => clearTimeout(timer)
   }, [states, refetch])
   useEffect(() => {
     const refresh = () => {
-      // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
-      void refetch()
       // oxlint-disable-next-line typescript/no-floating-promises -- useAction reports failures and resolves undefined rather than rejecting.
       void refetchDisk()
     }
     window.addEventListener('focus', refresh)
     return () => window.removeEventListener('focus', refresh)
-  }, [refetch, refetchDisk])
+  }, [refetchDisk])
   if (error) return <p className="font-mono text-[11px] text-error">{error.message}</p>
   if (!data) return null
   return (

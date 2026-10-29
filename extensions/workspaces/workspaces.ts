@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { lstat, mkdir, readdir, realpath, rm } from 'node:fs/promises'
-import { isAbsolute, join, relative, sep } from 'node:path'
+import { lstat, mkdir, readdir, readFile, realpath, rm, stat } from 'node:fs/promises'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import type { Context } from '@earendil-works/chord'
 import {
   configure,
@@ -36,6 +36,9 @@ import type {
   WorkspaceStats,
 } from './types.ts'
 import type { KeptWork } from '../conversations/types.ts'
+
+/** How long a checkout's uncommitted-changes answer is kept while nothing visible to git's stat cache has changed. */
+const dirtyAge = 120_000
 
 export const Workspaces = defineDoc<WorkspaceIndex>({
   kind: WorkspacesDoc.kind,
@@ -207,6 +210,42 @@ export function workspaces(host: Host) {
     'workspaces.disk',
     (): { last?: WorkspaceDisk; running?: Promise<WorkspaceDisk> } => ({}),
   )
+  const dirtyCache = host.resource(
+    'workspaces.dirty',
+    () => new Map<string, { key: string; at: number; dirty: Promise<boolean> }>(),
+  )
+  /** The git directory of a checkout: `.git` itself, or where a linked worktree's `.git` file points. */
+  const gitDirectory = async (path: string) => {
+    const dot = join(path, '.git')
+    if ((await stat(dot)).isDirectory()) return dot
+    return resolve(path, (await readFile(dot, 'utf8')).replace(/^gitdir:\s*/, '').trim())
+  }
+  /**
+   * Whether the checkout has uncommitted changes. `status` on a big tree takes seconds and, on a stale index, rewrites
+   * it, so it never takes the optional lock and its answer is kept while the commit, the index and the checkout's
+   * top folder are as they were (and for at most `dirtyAge`: editing a tracked file touches none of them). Callers
+   * during a run share it.
+   */
+  const hasChanges = async (path: string, tip: string) => {
+    const key = await gitDirectory(path)
+      .then(async (directory) => {
+        const [index, top] = await Promise.all([stat(join(directory, 'index')), stat(path)])
+        return `${tip}:${index.mtimeMs}:${top.mtimeMs}`
+      })
+      .catch(() => '')
+    const cached = dirtyCache.get(path)
+    if (key && cached?.key === key && Date.now() - cached.at < dirtyAge) return cached.dirty
+    const entry = {
+      key,
+      at: Date.now(),
+      dirty: git(path, '--no-optional-locks', 'status', '--porcelain').then(
+        (output) => output !== '',
+        () => false,
+      ),
+    }
+    dirtyCache.set(path, entry)
+    return entry.dirty
+  }
   const Lander = createLander(host, Workspaces, serial, {
     starter: async (id, context) => host.want(Branches)?.starter(id, context),
     working: async (tx, id) => (await host.want(Branches)?.working(tx, id)) ?? false,
@@ -1101,7 +1140,7 @@ export function workspaces(host: Host) {
           stats[workspace.state]++
           if (workspace.state !== 'ready') return
           const tip = await git(workspace.path, 'rev-parse', 'HEAD').catch(() => '')
-          if (await git(workspace.path, 'status', '--porcelain').catch(() => '')) stats.dirty++
+          if (await hasChanges(workspace.path, tip)) stats.dirty++
           if (!tip || tip === workspace.base) stats.fresh++
           else if (
             await git(

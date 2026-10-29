@@ -1488,6 +1488,23 @@ it.concurrent('counts checkouts by state, commits and uncommitted changes, and m
   // Counting never removes anything.
   expect((await f.service.get(landed, context))!.state).toBe('ready')
 })
+it.concurrent("keeps a checkout's uncommitted answer while its commit, index and folder are unchanged", async () => {
+  const f = await fixture()
+  const id = await f.create()
+  await f.service.ready(id, context)
+  const { path } = (await f.service.get(id, context))!
+  const dirty = async () => (await actions.stats({}, { host: f.host } as ActionContext)).dirty
+  expect(await dirty()).toBe(0)
+  // Editing a tracked file changes neither the commit, the index nor the top folder: the answer is kept.
+  await writeFile(join(path, 'base.txt'), 'edited')
+  expect(await dirty()).toBe(0)
+  // A new file changes the top folder: counted again, and the edit shows with it.
+  await writeFile(join(path, 'new.txt'), 'new')
+  expect(await dirty()).toBe(1)
+  // A commit moves HEAD: counted again.
+  await commit(path, 'new.txt')
+  expect(await dirty()).toBe(0)
+})
 it.concurrent('kills the whole process group of a running check when the lander is aborted', async () => {
   const f = await fixture()
   const pidFile = join(f.directory, 'child.pid')
