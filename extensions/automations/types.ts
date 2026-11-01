@@ -26,6 +26,8 @@ export type Automation = {
   /** The caller's idempotency key: a create with a key that exists returns that automation instead. */
   key?: string
   name: string
+  /** The conversation that created it; absent for project scripts found on disk and records from before this. */
+  createdBy?: number
   enabled: boolean
   createdAt: number
   updatedAt: number
