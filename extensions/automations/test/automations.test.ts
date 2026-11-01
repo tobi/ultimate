@@ -16,6 +16,7 @@ import { Metadata } from '../../../server/metadata.ts'
 import { Profile, Standing } from '../../subagents/api.ts'
 import automations, { actions, Automations } from '../server.ts'
 import type { Automation } from '../server.ts'
+import { attribution } from '../triggers.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import type { SubagentsService } from '../../subagents/api.ts'
 import { createChild } from '../../subagents/children.ts'
@@ -223,6 +224,30 @@ it('fires a subscriber-only schedule without creating a run conversation', async
       'automation',
     )
   }
+})
+
+it('records who created an automation and lists it with its subscribers', async () => {
+  const f = await fixture()
+  const [maker, target] = await f.opened.harness.commit(async (tx) => {
+    const ids = []
+    for (let i = 0; i < 2; i++) {
+      const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      await configure(tx, child.id, {})
+      ids.push(child.id)
+    }
+    return ids
+  }, context)
+  const a = (await f.action(
+    'create',
+    { name: 'Later', schedule: 'in 1h', subscribers: [target] },
+    maker,
+  )) as Automation
+  expect(a.createdBy).toBe(maker)
+  expect(attribution(a)).toBe(` (by #${maker}; → #${target})`)
+  expect(attribution({ ...a, createdBy: undefined, subscribers: [] })).toBe('')
+  expect(attribution({ ...a, createdBy: undefined, subscribers: ['@ultimate'] })).toBe(
+    ' (→ @ultimate)',
+  )
 })
 
 it('pause keeps a running profile run alive, skips overlap, and abort cancels a run', async () => {

@@ -79,6 +79,12 @@ export function describeTrigger(a: Automation): string {
   return a.script!.state
 }
 
+export function attribution(a: Automation): string {
+  const to = a.subscribers.map((s) => (typeof s === 'number' ? `#${s}` : s)).join(', ')
+  const parts = [...(a.createdBy ? [`by #${a.createdBy}`] : []), ...(to ? [`→ ${to}`] : [])]
+  return parts.length ? ` (${parts.join('; ')})` : ''
+}
+
 export const hours = (ms: number) =>
   ms % 3600_000 === 0 || ms >= 10 * 3600_000
     ? `${Math.round((ms / 3600_000) * 10) / 10}h`
