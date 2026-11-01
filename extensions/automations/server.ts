@@ -53,7 +53,7 @@ import {
 } from './refs.ts'
 import { describeSchedule, nextAt, parseSchedule } from './schedule.ts'
 import { scheduler } from './scheduler.ts'
-import { triggers, TRIGGER_EVENTS, describeTrigger } from './triggers.ts'
+import { triggers, TRIGGER_EVENTS, attribution, describeTrigger } from './triggers.ts'
 import { supervisor } from './supervisor.ts'
 import type { Prepared } from './supervisor.ts'
 import type {
@@ -352,6 +352,7 @@ function backend(host: ExtensionHost) {
           ]),
         ]
         Object.assign(sub, runProfile, {
+          ...(caller ? { createdBy: caller } : {}),
           enabled: true,
           updatedAt: Date.now(),
           subscribers,
@@ -381,6 +382,7 @@ function backend(host: ExtensionHost) {
         id,
         ...(args.key ? { key: args.key } : {}),
         name,
+        ...(caller ? { createdBy: caller } : {}),
         enabled: true,
         script: {
           ask: required(args.ask, 'ask'),
@@ -588,6 +590,7 @@ function backend(host: ExtensionHost) {
       state.automations[id] = {
         id,
         name: required(args.name, 'name'),
+        ...(caller ? { createdBy: caller } : {}),
         ...(args.schedule !== undefined ? { schedule: parseSchedule(args.schedule) } : {}),
         enabled: true,
         createdAt: now,
@@ -872,7 +875,7 @@ export default function automations(host: ExtensionHost) {
           const state = await read.snapshot(Automations, context)
           const lines = Object.values(state?.automations ?? {})
             .filter((a) => a.enabled)
-            .map((a) => `${a.id} ${a.name}: ${describeTrigger(a)}`)
+            .map((a) => `${a.id} ${a.name}: ${describeTrigger(a)}${attribution(a)}`)
           const orderedEmptySection = ''
           return lines.length
             ? `<automations>\n${lines.join('\n')}\n</automations>`
@@ -985,8 +988,7 @@ function concise(value: JsonValue): string {
   if (Array.isArray(value)) return value.length ? value.map(concise).join('\n') : 'None.'
   if (value && typeof value === 'object' && 'enabled' in value) {
     const a = value as Automation
-    const to = a.subscribers.map((s) => (typeof s === 'number' ? `#${s}` : s)).join(', ')
-    return `${a.id} ${a.name} — ${describeTrigger(a)} — ${a.enabled ? 'enabled' : 'paused'}${to ? ` → ${to}` : ''}`
+    return `${a.id} ${a.name} — ${describeTrigger(a)} — ${a.enabled ? 'enabled' : 'paused'}${attribution(a)}`
   }
   if (value && typeof value === 'object' && typeof value.text === 'string') return value.text
   return JSON.stringify(value)

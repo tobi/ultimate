@@ -25,6 +25,7 @@ import { Profile, Standing } from '../../subagents/api.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
 import automations, { actions, Automations } from '../server.ts'
 import type { Automation } from '../server.ts'
+import { attribution } from '../triggers.ts'
 import type { ActionContext } from '../../../server/actions.ts'
 import type { SubagentsService } from '../../subagents/api.ts'
 import { createChild } from '../../subagents/children.ts'
@@ -266,6 +267,62 @@ it('skips the recorded lander conversation whatever its label says', async () =>
   await until(async () => (await fired(other)).length > 0)
   await f.action('pause', { id: a.id })
   expect(await fired(lander)).toEqual([])
+})
+
+it('pause keeps a running profile run alive, skips overlap, and abort cancels a run', async () => {
+  const f = await fixture()
+  const a = (await f.action('create', {
+    name: 'Hold',
+    prompt: 'HOLD',
+    schedule: 'every 1s',
+    agent: 'writer',
+  })) as Automation
+  await until(f.held)
+  const run = (await f.records())[0].runs[0]
+  const child = (await f.opened.harness.conversation(run.conversationId!, context))!
+  const agent = await child.agent(context)
+  expect(agent.tools.map((t) => t.name)).toEqual(['hold'])
+  expect(agent.instructions).toBe('Only write the report.')
+  // Labelled 'automation', the run still records the definition it runs, which fast mode reads.
+  expect(await f.opened.harness.snapshot(Profile, child.id, context)).toEqual({
+    definition: 'writer',
+  })
+  await until(async () => (await f.records())[0].runs.some((r) => r.status === 'skipped'), 2500)
+  await f.action('pause', { id: a.id })
+  expect((await f.records())[0].runs[0].status).toBe('running')
+  f.release()
+  await until(async () => (await f.records())[0].runs[0].status === 'done')
+  await f.opened.harness.waitForTask(Number(run.id) as TaskId, context)
+  const manual = (await f.action('run', { id: a.id })) as { id: string }
+  expect(manual.id).not.toMatch(/^skipped:/)
+  await until(async () => !!(await f.records())[0].runs.at(-1)?.conversationId)
+  await f.action('abort', { id: a.id, runId: manual.id })
+  await until(async () => (await f.records())[0].runs.at(-1)?.status === 'aborted')
+  await expect(f.action('update', { id: a.id, agent: 'missing' })).rejects.toThrow('Unknown agent')
+})
+
+it('records who created an automation and lists it with its subscribers', async () => {
+  const f = await fixture()
+  const [maker, target] = await f.opened.harness.commit(async (tx) => {
+    const ids = []
+    for (let i = 0; i < 2; i++) {
+      const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      await configure(tx, child.id, {})
+      ids.push(child.id)
+    }
+    return ids
+  }, context)
+  const a = (await f.action(
+    'create',
+    { name: 'Later', schedule: 'in 1h', subscribers: [target] },
+    maker,
+  )) as Automation
+  expect(a.createdBy).toBe(maker)
+  expect(attribution(a)).toBe(` (by #${maker}; → #${target})`)
+  expect(attribution({ ...a, createdBy: undefined, subscribers: [] })).toBe('')
+  expect(attribution({ ...a, createdBy: undefined, subscribers: ['@ultimate'] })).toBe(
+    ' (→ @ultimate)',
+  )
 })
 
 it('pause keeps a running profile run alive, skips overlap, and abort cancels a run', async () => {
