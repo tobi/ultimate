@@ -442,7 +442,7 @@ it('applies each automation call in one script to its own arguments', async () =
      return { line: await tools.automation({action:'list'}), subscribers: stored.subscribers };`,
   )
   expect(result.data.details.value).toEqual({
-    line: 'A1 Probe — Every 1 day — enabled → @ultimate',
+    line: 'A1 Probe — Every 1 day — enabled (by #1; → @ultimate)',
     subscribers: ['@ultimate'],
   })
 })

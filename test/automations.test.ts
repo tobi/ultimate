@@ -16,6 +16,7 @@ import { Waits } from '../extensions/messages/api.ts'
 import { Profile } from '../extensions/subagents/api.ts'
 import automations, { actions, Automations } from '../extensions/automations/server.ts'
 import type { Automation } from '../extensions/automations/server.ts'
+import { attribution } from '../extensions/automations/triggers.ts'
 import type { ActionContext } from '../server/actions.ts'
 import type { SubagentsService } from '../extensions/subagents/api.ts'
 import { createChild } from '../extensions/subagents/children.ts'
@@ -217,6 +218,30 @@ it('fires a subscriber-only schedule without creating a run conversation', async
       'automation',
     )
   }
+})
+
+it('records who created an automation and lists it with its subscribers', async () => {
+  const f = await fixture()
+  const [maker, target] = await f.opened.harness.commit(async (tx) => {
+    const ids = []
+    for (let i = 0; i < 2; i++) {
+      const child = await tx.createConversation({ ownership: { kind: 'ownerless' } })
+      await configure(tx, child.id, {})
+      ids.push(child.id)
+    }
+    return ids
+  }, context)
+  const a = (await f.action(
+    'create',
+    { name: 'Later', schedule: 'in 1h', subscribers: [target] },
+    maker,
+  )) as Automation
+  expect(a.createdBy).toBe(maker)
+  expect(attribution(a)).toBe(` (by #${maker}; → #${target})`)
+  expect(attribution({ ...a, createdBy: undefined, subscribers: [] })).toBe('')
+  expect(attribution({ ...a, createdBy: undefined, subscribers: ['@ultimate'] })).toBe(
+    ' (→ @ultimate)',
+  )
 })
 
 it('answers whether a conversation still waits on an enabled automation subscribed to it', async () => {
