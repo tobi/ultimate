@@ -49,6 +49,8 @@ override either. Enabled automations add a line each to the prompt, such as `whe
 
 `automation` is replay-safe and takes `events`, `list`, `create`, `update`, `pause`, `resume`, `run`, `runs`, `log`,
 `abort`, `escalate`, `subscribe`, `unsubscribe`, `delete`.
+Each automation records `createdBy`, the conversation that created it (absent for project scripts found on disk), and
+`list` and the prompt's automations block show it with the subscribers: `A96 import emit 2 done (by #12; → #12)`.
 
 - `create {name, schedule?|ask?|event?|condition?, once?, secrets?, prompt?, agent?, model?, thinking?, subscribers?,
   scope?, slug?, to?, key?}`. `key` makes it idempotent: a key an automation already has returns that automation.

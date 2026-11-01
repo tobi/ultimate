@@ -52,6 +52,10 @@ small; skip what is risky or vague), with one line on why. For each approved one
   request it adapts into the branch prompt, and the branch follows the integrate-ultimate skill.
 - **Memory change:** apply it with one `remember` batch.
 
+Acknowledge every report the dream branch sends, in the turn it arrives: the `Decisions:` block gets your "ask the user" or
+"decided" answer; its final report, once every proposal has a decision and you have started the branches and applied the
+memory batch, gets the dream branch concluded. A report left unanswered shows as the dream branch "awaiting @ultimate".
+
 A codified memory (`retire` on the proposal) stays until its branch lands; then delete or update it with `remember`.
 
 ### Prepare the fresh chapter

@@ -29,6 +29,8 @@ export type Automation = {
   scope?: 'project'
   key?: CreateIdempotencyKey
   name: string
+  /** The conversation that created it; absent for project scripts found on disk and records from before this. */
+  createdBy?: number
   enabled: boolean
   createdAt: number
   updatedAt: number
