@@ -775,7 +775,7 @@ export function workspaces(host: Host) {
         const needsRestart =
           (await realpath(source)) === (await realpath(host.ultimateRoot)) &&
           restartNeeded(files.map((file) => file.path))
-        await git(source, 'merge', '--ff-only', tip)
+        await git(source, 'merge', '--no-stat', '--ff-only', tip)
         result = {
           text: `Landed commits:\n${commits.join('\n')}\nChanged files:\n${files.map((file) => `${file.path} +${file.added} -${file.removed}`).join('\n')}${needsRestart ? '\nNeeds restart.' : ''}`,
           landed: tip,

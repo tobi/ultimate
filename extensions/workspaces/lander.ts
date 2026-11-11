@@ -595,7 +595,16 @@ export function createLander(
                 hint: string,
               ) => {
                 try {
-                  await git(path, 'merge', '--no-edit', '-m', message, commit)
+                  // No diffstat: over a monorepo's main it takes minutes, and nothing reads it.
+                  await git(
+                    { cwd: path, timeout: 5 * 60_000 },
+                    'merge',
+                    '--no-stat',
+                    '--no-edit',
+                    '-m',
+                    message,
+                    commit,
+                  )
                   return false
                 } catch {
                   const conflicts = await git(path, 'diff', '--name-only', '--diff-filter=U')
