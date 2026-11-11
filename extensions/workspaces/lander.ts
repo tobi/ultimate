@@ -791,8 +791,20 @@ export function createLander(
           const candidate: Landed = {
             sha: integrated,
             base,
-            commits: lines(await git(source, 'log', '--oneline', `${base}..${integrated}`)),
-            paths: lines(await git(source, 'diff', '--name-only', base, integrated)),
+            // Capped: a landing that merges a monorepo's main brings hundreds of thousands of commits and paths,
+            // more than git()'s output buffer holds, and the landing had already happened when listing them failed.
+            commits: lines(
+              await git(source, 'log', '--oneline', '-n', '300', `${base}..${integrated}`),
+            ),
+            paths: lines(
+              await git(
+                { cwd: source, timeout: 120_000, maxBuffer: 256 * 1024 * 1024 },
+                'diff',
+                '--name-only',
+                base,
+                integrated,
+              ),
+            ).slice(0, 1000),
             flaky,
             // Left out, not undefined: documents refuse undefined values.
             ...(weight ? { weight } : {}),
