@@ -144,7 +144,7 @@ export function Wordmark({ onClick, label }: { onClick?: () => void; label?: str
  * The brand. Beyond a phone it is the mark, which an extension may make a button (`titlebar.brand`), since the tabs
  * beside it list the surfaces; on phones it opens the list of surfaces and names the shown one.
  */
-function Brand() {
+export function Brand() {
   const surfaces = surfaceItems(useExtensions())
   const shown = useStore((state) => state.ui.surface?.id)
   const current = surfaces.find((surface) => surface.id === shown)
@@ -215,7 +215,7 @@ function Brand() {
 }
 
 /** One lowercase word per surface beyond a phone, the shown one underlined in brand at the bar's bottom edge. */
-function SurfaceItems() {
+export function SurfaceItems() {
   const surfaces = surfaceItems(useExtensions())
   const shown = useStore((state) => state.ui.surface?.id)
   return (
@@ -256,17 +256,54 @@ function SurfaceItems() {
   )
 }
 
+/** The command palette's button: words beyond a laptop, an icon below. */
+export function PaletteButton() {
+  return (
+    <>
+      <Button
+        aria-label="Command palette"
+        className="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground max-lg:hidden"
+        onClick={actions.openPalette}
+        size="sm"
+        variant="ghost"
+      >
+        commands
+        <Shortcut keys="mod+k" />
+      </Button>
+      <Button
+        aria-label="Command palette"
+        className="-mr-1 size-6 text-muted-foreground hover:text-foreground md:max-lg:size-7 lg:hidden"
+        onClick={actions.openPalette}
+        size="icon"
+        variant="ghost"
+      >
+        <CommandIcon className="size-3.5" />
+      </Button>
+    </>
+  )
+}
+
+/** The title bar's frame: one 36 px line with the status line's background. */
+export const titleBarClass =
+  'flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b border-border/70 bg-sidebar pr-3 font-mono text-[11.5px] text-muted-foreground'
+
+/**
+ * The bar above every surface, or what an extension puts in its place (`titlebar`), composed from the same parts:
+ * `Brand`, `SurfaceItems`, `PaletteButton` and the `titlebar.*` slots.
+ */
+export function TitleBar() {
+  const replaced = slotItems(useExtensions(), 'titlebar').length > 0
+  return replaced ? <Slot name="titlebar" variant="inline" /> : <DefaultTitleBar />
+}
+
 /**
  * The bar above every surface, as the status line's background: the brand (the surface switcher on phones), the
  * project chip, `titlebar.left`, the surfaces; then `titlebar.right` (the agent surface's panel icons on a tablet among
  * them) and the command palette.
  */
-export function TitleBar() {
+function DefaultTitleBar() {
   return (
-    <div
-      className="flex h-9 shrink-0 items-center gap-3 overflow-hidden border-b border-border/70 bg-sidebar pr-3 font-mono text-[11.5px] text-muted-foreground"
-      data-ui="titlebar"
-    >
+    <div className={titleBarClass} data-ui="titlebar">
       <div className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap">
         {/* As wide as the docked sidebar on every surface, so the surfaces never move and start where Agent's conversation does. */}
         <div
@@ -285,25 +322,7 @@ export function TitleBar() {
       </div>
       <div className="flex shrink-0 items-center gap-3 whitespace-nowrap">
         <Slot name="titlebar.right" variant="inline" />
-        <Button
-          aria-label="Command palette"
-          className="-mr-1 h-6 gap-1.5 px-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground max-lg:hidden"
-          onClick={actions.openPalette}
-          size="sm"
-          variant="ghost"
-        >
-          commands
-          <Shortcut keys="mod+k" />
-        </Button>
-        <Button
-          aria-label="Command palette"
-          className="-mr-1 size-6 text-muted-foreground hover:text-foreground md:max-lg:size-7 lg:hidden"
-          onClick={actions.openPalette}
-          size="icon"
-          variant="ghost"
-        >
-          <CommandIcon className="size-3.5" />
-        </Button>
+        <PaletteButton />
       </div>
     </div>
   )
