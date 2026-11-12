@@ -279,6 +279,7 @@ type CommittedDeliveryDecision = {
   text: string
   outcome: WorkspaceIndex['results'][string]
   concluded: boolean
+  continues?: boolean
   starter?: ConversationId
 }
 type ConcludedBranchRelease = { phase: 'release'; conversationId: ConversationId }
@@ -290,6 +291,7 @@ type UnderwayReportPhase = {
   conversationId: BranchReportHeldAsNote
   text: string
   outcome: WorkspaceIndex['results'][string]
+  continues?: boolean
 }
 
 type State =
@@ -437,6 +439,7 @@ export function createLander(
                 id,
                 conversationId: entry.conversationId,
                 outcome: draft.results[id],
+                ...(entry.continues ? { continues: true } : {}),
                 text: `[lander] Submission ${id} (#${entry.conversationId}, ${entry.tip.slice(0, 7)}) ${text}\nLog: lander conversation #${runtime.conversationId}.`,
               },
             }
@@ -788,24 +791,49 @@ export function createLander(
         }
       },
       report: async (task, runtime, context) => {
-        const { id, conversationId, text, outcome } = task.state.checkpoint
+        const { id, conversationId, text, outcome, continues } = task.state.checkpoint
         const branch = conversationId
         const entry = { kind: LanderReportEntry.kind, data: { id, outcome } }
         const next = { status: 'running', checkpoint: { phase: 'next' } } as const
-        if (outcome.outcome === 'failed') {
+        if (outcome.outcome === 'failed' || continues) {
           await (
             await runtime.conversation(branch, context)
           )?.submit(
             {
               type: 'input',
-              content: text,
+              content:
+                continues && outcome.outcome === 'landed'
+                  ? `${text}\nGo on with the next slice.`
+                  : text,
               entry,
               whenBusy: 'followUp',
               requestId: `lander:${id}`,
             },
             context,
           )
+        }
+        if (outcome.outcome === 'failed') {
           await runtime.commit(() => next, context)
+          return
+        }
+        if (continues) {
+          const starter = await after.starter(branch, context)
+          await runtime.commit(
+            () => ({
+              status: 'running',
+              checkpoint: {
+                phase: 'deliver',
+                id,
+                conversationId,
+                text,
+                outcome,
+                concluded: false,
+                continues: true,
+                ...(starter !== undefined && starter !== branch ? { starter } : {}),
+              },
+            }),
+            context,
+          )
           return
         }
         await (
@@ -849,10 +877,11 @@ export function createLander(
           text,
           outcome,
           concluded: conclusionCommitted,
+          continues,
           starter,
         } = task.state.checkpoint
         const entry = { kind: LanderReportEntry.kind, data: { id, outcome } }
-        const content = `${text}\nDiverged: ${outcome.divergence}\n${conclusionCommitted ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
+        const content = `${text}\nDiverged: ${outcome.divergence}\n${conclusionCommitted ? `#${conversationId} is concluded.` : continues ? `#${conversationId} goes on with its next slice; it reports when it stops.` : `#${conversationId} still has work under way; it reports when it stops.`}`
         if (starter !== undefined)
           await (
             await host.harness().conversation(starter, context)

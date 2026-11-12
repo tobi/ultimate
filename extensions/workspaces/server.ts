@@ -2,7 +2,7 @@ import { parseConversationId } from '../../lib/ids.ts'
 import type { JsonValue } from '@earendil-works/chord/json'
 import { onCommit } from '../../lib/commits.ts'
 import { BACKGROUND_CONTEXT as context } from '@earendil-works/chord/context'
-import { obj, opt, str } from '@earendil-works/pi-schema'
+import { bool, obj, opt, str } from '@earendil-works/pi-schema'
 import { strEnum } from '../../lib/schema.ts'
 import {
   configure,
@@ -230,8 +230,14 @@ export default function workspaceExtension(host: ExtensionHost) {
                 "Required for submit. How the delivered result differs from what was originally asked: new agreements, a different approach or library, changed scope. Say 'None' when it matches.",
             }),
           ),
+          continues: opt(
+            bool({
+              description:
+                'For submit: more slices of this branch follow. The landing then keeps you open and wakes you with its card instead of concluding you.',
+            }),
+          ),
         }),
-        async execute({ action, divergence }, api, caller) {
+        async execute({ action, divergence, continues }, api, caller) {
           if (action === 'status')
             return finish({
               conversationId: api.conversationId,
@@ -248,7 +254,9 @@ export default function workspaceExtension(host: ExtensionHost) {
             )
               throw new Error(`Only a top-level main conversation can ${action} its own workspace`)
           }, caller)
-          return finish(await service.submit(api.conversationId, divergence ?? '', caller))
+          return finish(
+            await service.submit(api.conversationId, divergence ?? '', caller, continues ?? false),
+          )
         },
       }),
     ],
@@ -263,7 +271,7 @@ export default function workspaceExtension(host: ExtensionHost) {
           .commit((tx) => tx.conversation(input.conversationId), caller)
         if (row?.owner)
           return `${head} You are a subagent: commit your verified work in this worktree and report the commit to your owner, who lands it. Only a top-level conversation can \`workspace submit\`.`
-        return `${head} Finish with \`workspace submit\` once your tip is committed and verified: the lander merges it into ${own.target} with whatever landed meanwhile, runs the project's checks, fast-forwards ${own.target} and pushes when configured; keep working meanwhile and do not merge ${own.target} yourself first. A failure comes back to you as a message: fix it and submit again. A landing reaches whoever started you as its card, and concludes you unless other work is still under way.`
+        return `${head} Finish with \`workspace submit\` once your tip is committed and verified: the lander merges it into ${own.target} with whatever landed meanwhile, runs the project's checks, fast-forwards ${own.target} and pushes when configured; keep working meanwhile and do not merge ${own.target} yourself first. A failure comes back to you as a message: fix it and submit again. A landing reaches whoever started you as its card, and concludes you unless other work is still under way; when more slices follow, submit with \`continues: true\` and the landing wakes you instead.`
       }),
     ],
   })
