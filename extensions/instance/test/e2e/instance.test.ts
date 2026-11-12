@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { cp, readFile, stat, symlink, writeFile } from 'node:fs/promises'
+import { cp, mkdir, readFile, stat, symlink, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import {
   fauxAssistantMessage,
@@ -19,7 +19,7 @@ import workspaceExtension from '../../../workspaces/server.ts'
 import { workspaces } from '../../../workspaces/workspaces.ts'
 import { git } from '../../../../lib/git.ts'
 import { exec } from '../../../../lib/exec.ts'
-import { projectSettings } from '../../../../server/project-setup.ts'
+import { projectSettings, projectSetup } from '../../../../server/project-setup.ts'
 import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import type { ExtensionHost } from '../../../../server/extensions.ts'
 import type { ConversationsService } from '../../../conversations/api.ts'
@@ -47,7 +47,8 @@ async function assertProject(
   }
   expect((await fetch(`${preview.url}/api/models`)).status).toBe(200)
 }
-async function fixture({ foreign = false } = {}) {
+/** `nested`: the foreign project is a subfolder of its repository, as a zone in a monorepo. */
+async function fixture({ foreign = false, nested = false } = {}) {
   const root = await temp('ultimate-preview-')
   // Child hosts must sweep only this fixture, never the machine's real temporary directory.
   vi.stubEnv('TMPDIR', root)
@@ -79,9 +80,10 @@ async function fixture({ foreign = false } = {}) {
     'lib',
   )
   await git(source, 'commit', '-m', 'Configure preview setup')
-  const project = foreign ? join(root, 'app') : source
+  const project = foreign ? join(root, 'app', ...(nested ? ['zones', 'app'] : [])) : source
   if (foreign) {
-    await git(root, 'init', '-b', 'main', project)
+    await git(root, 'init', '-b', 'main', join(root, 'app'))
+    await mkdir(project, { recursive: true })
     await writeFile(join(project, 'README.md'), 'An app, not Ultimate\n')
     await git(project, 'add', 'README.md')
     await git(project, 'commit', '-m', 'Start app')
@@ -106,6 +108,7 @@ async function fixture({ foreign = false } = {}) {
   const host = {
     ...prepared,
     projectSettings: () => projectSettings(project, root),
+    projectSetup: () => projectSetup(project, root),
     harness: () => opened.harness,
     metadata: Metadata,
     emit,
@@ -339,6 +342,19 @@ it('starts a preview on the model given to start, over the instance.model settin
           ).stdout.split(/\s+/)
     expect(environ).toContain('ULTIMATE_NO_OPEN=1')
     expect(environ.filter((line) => line.startsWith('ULTIMATE_MODEL='))).toEqual([])
+    await f.run({ action: 'stop', id: preview.id })
+  } finally {
+    await f.close()
+  }
+}, 120000)
+it('previews a project in a subfolder of its repository as that subfolder of the workspace', async () => {
+  const f = await fixture({ foreign: true, nested: true })
+  try {
+    const main = await f.main()
+    const preview = JSON.parse(await f.call('instance', { action: 'start' }, main.id)) as Preview
+    const zone = join(main.workspace.path, 'zones', 'app')
+    expect(await readFile(join(zone, 'README.md'), 'utf8')).toContain('not Ultimate')
+    await assertProject(preview, zone, true, f.source)
     await f.run({ action: 'stop', id: preview.id })
   } finally {
     await f.close()
