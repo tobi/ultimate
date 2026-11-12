@@ -12,11 +12,8 @@ Never claim a UI change works without an image of it.
 - `web/` and built-in `extensions/` changes in the host's own checkout reload in the running host: omit `url`.
 - A worktree, a branch or a project `.ultimate/extensions/` change does not reach the host: start a preview of the
   checkout (`instance start`) and pass its URL. `server/` or `shared/` changes need a fresh preview.
-- Check that the preview loaded what you changed. `instance start` runs the workspace's git root as the project, so a
-  project in a subdirectory of its repository (`<repo>/some/dir/.ultimate/extensions/`) is not loaded. If your
-  extension is missing there, start a scratch server by hand from the clone with the subdirectory as its project
-  (`pnpm start <dir> --port 4799 --no-open`, with the scratch home of [docs/running.md](../../docs/running.md)); its
-  `.ultimate/` loads only once that project is trusted ([docs/settings.md](../../docs/settings.md)).
+- Check that the preview loaded what you changed. A project in a subdirectory of its repository previews as that
+  subdirectory of the workspace, with the project's decision, so its `.ultimate/` loads there too.
 
 ## How
 
