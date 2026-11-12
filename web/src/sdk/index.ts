@@ -61,6 +61,7 @@ export { ProjectChip, projectTitle, Wordmark } from '../app/titlebar.tsx'
 /** The title bar's parts, for an extension that replaces the whole bar in `titlebar`. */
 export {
   Brand as TitleBarBrand,
+  DefaultTitleBar as TitleBarDefault,
   PaletteButton as TitleBarPalette,
   SurfaceItems as TitleBarSurfaces,
   titleBarClass,

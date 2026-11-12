@@ -301,7 +301,7 @@ export function TitleBar() {
  * project chip, `titlebar.left`, the surfaces; then `titlebar.right` (the agent surface's panel icons on a tablet among
  * them) and the command palette.
  */
-function DefaultTitleBar() {
+export function DefaultTitleBar() {
   return (
     <div className={titleBarClass} data-ui="titlebar">
       <div className="flex min-w-0 flex-1 items-center overflow-hidden whitespace-nowrap">

@@ -43,8 +43,11 @@ function Frame() {
   )
 }
 
-/** An Ultimate shown inside another one's window, under that one's title bar, shows none of its own. */
-const embedded = window.top !== window
+/**
+ * An Ultimate shown inside another one's window, under that one's title bar, shows none of its own. A frame named
+ * `fleet` is a whole project under a machine-wide strip of projects (the user extension `fleet`), so it keeps its bar.
+ */
+const embedded = window.top !== window && window.name !== 'fleet'
 
 /** The missing surface last reported, so it is reported once until it shows again. */
 let reported: string | undefined
