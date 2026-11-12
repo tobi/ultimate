@@ -20,6 +20,8 @@ export type QueueEntry = {
   /** Latest submitting conversation entry when submit was called. */
   at: number
   divergence: string
+  /** More slices follow: a landing leaves the branch open and wakes it with the card. */
+  continues?: boolean
   state: 'queued' | 'landing'
   subject?: ConversationSubject
   step?: string

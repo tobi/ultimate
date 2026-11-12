@@ -315,6 +315,8 @@ type State =
       conversationId: number
       text: string
       outcome: WorkspaceIndex['results'][string]
+      /** Submitted with `continues`: more slices follow. */
+      continues?: boolean
     }
   /** The landing's decision, made once: tell `starter` (waking it only when the branch `concluded`), then release it. */
   | {
@@ -324,6 +326,7 @@ type State =
       text: string
       outcome: WorkspaceIndex['results'][string]
       concluded: boolean
+      continues?: boolean
       starter?: number
     }
   /** A landed branch concluded in the report's last commit: free its checkout. */
@@ -478,6 +481,7 @@ export function createLander(
                 id,
                 conversationId: entry.conversationId,
                 outcome: draft.results[id],
+                ...(entry.continues ? { continues: true } : {}),
                 text: `[lander] Submission ${id} (#${entry.conversationId}, ${entry.tip.slice(0, 7)}) ${text}\nLog: lander conversation #${runtime.conversationId}.`,
               },
             }
@@ -827,27 +831,53 @@ export function createLander(
       /**
        * A failure wakes the submitter, which fixes it and submits again. A landing is the end of the branch's work: the
        * submitter gets the card as a note, the branch is concluded unless work is still under way, and whoever started
-       * it wakes with the same card. Each write has its request id, so a resume never sends one twice.
+       * it wakes with the same card. A landing submitted with `continues` instead wakes the submitter with the card and
+       * leaves it open for its next slice. Each write has its request id, so a resume never sends one twice.
        */
       report: async (task, runtime, context) => {
-        const { id, conversationId, text, outcome } = task.state.checkpoint
+        const { id, conversationId, text, outcome, continues } = task.state.checkpoint
         const branch = conversationId as ConversationId
         const entry = { kind: LanderReportEntry, data: { id, outcome } }
         const next = { status: 'running', checkpoint: { phase: 'next' } } as const
-        if (outcome.outcome === 'failed') {
+        if (outcome.outcome === 'failed' || continues) {
           await (
             await runtime.conversation(branch, context)
           )?.submit(
             {
               type: 'input',
-              content: text,
+              content:
+                continues && outcome.outcome === 'landed'
+                  ? `${text}\nGo on with the next slice.`
+                  : text,
               entry,
               whenBusy: 'followUp',
               requestId: `lander:${id}`,
             },
             context,
           )
+        }
+        if (outcome.outcome === 'failed') {
           await runtime.commit(() => next, context)
+          return
+        }
+        if (continues) {
+          const starter = await after.starter(branch, context)
+          await runtime.commit(
+            () => ({
+              status: 'running',
+              checkpoint: {
+                phase: 'deliver',
+                id,
+                conversationId,
+                text,
+                outcome,
+                concluded: false,
+                continues: true,
+                ...(starter !== undefined && starter !== branch ? { starter } : {}),
+              },
+            }),
+            context,
+          )
           return
         }
         await (
@@ -891,9 +921,10 @@ export function createLander(
       // The starter wakes once when the branch's work ends: here when the landing concluded it, else with the branch's
       // own report when it stops, so the card goes as a note.
       deliver: async (task, runtime, context) => {
-        const { id, conversationId, text, outcome, concluded, starter } = task.state.checkpoint
+        const { id, conversationId, text, outcome, concluded, continues, starter } =
+          task.state.checkpoint
         const entry = { kind: LanderReportEntry, data: { id, outcome } }
-        const content = `${text}\nDiverged: ${outcome.divergence}\n${concluded ? `#${conversationId} is concluded.` : `#${conversationId} still has work under way; it reports when it stops.`}`
+        const content = `${text}\nDiverged: ${outcome.divergence}\n${concluded ? `#${conversationId} is concluded.` : continues ? `#${conversationId} goes on with its next slice; it reports when it stops.` : `#${conversationId} still has work under way; it reports when it stops.`}`
         if (starter !== undefined)
           await (
             await host.harness().conversation(starter as ConversationId, context)
