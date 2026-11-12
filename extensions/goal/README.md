@@ -15,7 +15,8 @@ Hands-off goals: put @ultimate on a goal and go away; it decides what it would o
      branch's go or a UI preview it approved; `images` (`"latest"` or an entry id of its conversation) keeps the
      screenshots it judged;
    - `met {n}` and `failed {n}`: a criterion is blocked after 3 failed tries; work goes on with the others;
-   - `finish {outcome: 'met' | 'blocked', summary}` ends the goal;
+   - `finish {outcome: 'met' | 'blocked' | 'ended', summary}` ends the goal: `ended` when the user ended it before
+     it was met (by telling @ultimate rather than pressing **End hands-off**), never `blocked`;
    - `pause {reason}` when it is truly blocked on the user: the reminder pauses and the card shows "Waiting on you:
      <reason>"; `resume` turns it back on once it can go on. An answer from the user does not resume it by itself:
      an answer may not unblock the goal, so @ultimate resumes when it does, and the goal note reminds it while paused.
@@ -26,7 +27,8 @@ Hands-off goals: put @ultimate on a goal and go away; it decides what it would o
    task to rerun; a rerun adopts the automation an earlier try made by its name, and one the user deleted in the
    Automations panel stays deleted. On a fire, the goal note adds what to check: the goal's branches moving, the lander queue, reactor lag
    and watchdog cards; nudge or fix what is stuck, record a `decide` only when it changed something, else stay quiet. This replaces the manual night watch while a goal is open.
-5. The goal ends when @ultimate finishes it or the user presses **End hands-off** on its card (user-only `end`). Either
+5. The goal ends when @ultimate finishes it or the user presses **End hands-off** on its card (user-only `end`, outcome
+   `ended`). Either
    way a `goal.report` card is written into @ultimate's conversation (`goal.report:N`), and from then on it asks the
    user as usual.
 

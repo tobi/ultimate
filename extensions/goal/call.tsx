@@ -21,7 +21,7 @@ function headline(args: ToolCallView['args']): [string, string] {
     case 'failed':
       return [`Criterion ${n ?? ''} not met yet`, '']
     case 'finish':
-      return ['Goal finished', args.outcome === 'blocked' ? 'blocked' : words(args.outcome)]
+      return ['Goal finished', args.outcome === 'ended' ? 'ended by you' : words(args.outcome)]
     case 'pause':
       return ['Waiting on you', words(args.reason)]
     case 'resume':

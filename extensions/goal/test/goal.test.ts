@@ -143,6 +143,20 @@ it('blocks a criterion after repeated failed tries and finishes with the outcome
   expect(await openGoal(tx)).toBeUndefined()
 })
 
+it('finishes a goal the user ended in conversation as ended, not blocked', async () => {
+  const tx = fakeTx()
+  await start(tx, 'Goal', 0)
+  const done = await act(
+    tx,
+    ULTIMATE,
+    { action: 'finish', outcome: 'ended', summary: 'The user called it off' },
+    4,
+  )
+  expect(done.ended).toMatchObject({
+    ended: { by: 'ultimate', outcome: 'ended', summary: 'The user called it off' },
+  })
+})
+
 it('records decisions with the screenshots of its own conversation only', async () => {
   const tx = fakeTx()
   await start(tx, 'Goal', 0)

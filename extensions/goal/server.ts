@@ -99,7 +99,7 @@ export function noteText(goal: Goal, reminded = false) {
   return [
     `Hands-off goal ${goal.id}, granted by the user, who is away: ${goal.text}`,
     `Done means:\n${criteria}`,
-    `Work toward it without the user: decide what you would ask them yourself (a go, a decision, a UI preview approval against the criteria), record each with goal {action: 'decide'} and its reason, and keep going. ${goal.decisions.length} decided so far. Mark criteria met or failed as you check them; a criterion is blocked after ${TRIES} failed tries, so learn from each failure before the next try. Finish with goal {action: 'finish'} when every criterion is met or every open one is blocked. Only when you are truly blocked on the user, goal {action: 'pause', reason} stops the reminder that wakes you.`,
+    `Work toward it without the user: decide what you would ask them yourself (a go, a decision, a UI preview approval against the criteria), record each with goal {action: 'decide'} and its reason, and keep going. ${goal.decisions.length} decided so far. Mark criteria met or failed as you check them; a criterion is blocked after ${TRIES} failed tries, so learn from each failure before the next try. Finish with goal {action: 'finish'} when every criterion is met or every open one is blocked, or with outcome 'ended' when the user ends the goal before that. Only when you are truly blocked on the user, goal {action: 'pause', reason} stops the reminder that wakes you.`,
     ...(goal.waiting
       ? [
           `Waiting on the user since ${new Date(goal.waiting.at).toISOString()}: ${goal.waiting.reason}. The reminder is paused. Once they answer and you can go on, goal {action: 'resume'} turns it back on.`,
@@ -133,7 +133,7 @@ type ToolArgs = {
   reason?: string
   conversation?: number
   images?: 'latest' | number
-  outcome?: 'met' | 'blocked'
+  outcome?: 'met' | 'blocked' | 'ended'
   summary?: string
 }
 
@@ -201,8 +201,8 @@ export async function act(tx: Tx, ultimate: ConversationId, args: ToolArgs, now:
       sync: goal.id,
     }
   }
-  if (args.outcome !== 'met' && args.outcome !== 'blocked')
-    throw new Error("finish needs outcome 'met' or 'blocked'")
+  if (args.outcome !== 'met' && args.outcome !== 'blocked' && args.outcome !== 'ended')
+    throw new Error("finish needs outcome 'met', 'blocked' or 'ended'")
   const ended = await end(tx, {
     at: now,
     by: 'ultimate',
@@ -219,7 +219,7 @@ export async function act(tx: Tx, ultimate: ConversationId, args: ToolArgs, now:
 const reportText = (goal: Goal) =>
   goal.ended?.by === 'user'
     ? `The user ended hands-off goal ${goal.id}. From now on ask them as usual.`
-    : `Hands-off goal ${goal.id} ended (${goal.ended?.outcome}); its report card is here for the user. From now on ask them as usual.`
+    : `Hands-off goal ${goal.id} ${goal.ended?.outcome === 'ended' ? 'ended early, as the user asked' : `ended (${goal.ended?.outcome})`}; its report card is here for the user. From now on ask them as usual.`
 
 /**
  * Goal `goal`'s card of `kind` for @ultimate, delivered by a task created in `tx`, the commit that changed the goal.
@@ -330,7 +330,7 @@ export default function goalExtension(host: ExtensionHost) {
         name: 'goal',
         deferred: true,
         description:
-          "The hands-off goal the user put you on (only while one is open; the goal note names it): criteria {criteria: [...]} writes what done means, each checkable; decide {question, picked, reason, conversation?, images?} records a decision you took instead of asking the user (images: \"latest\" or an entry id of your conversation with screenshots you judged); met {n} / failed {n} mark criterion n; finish {outcome: 'met' | 'blocked', summary} ends the goal and leaves the report card; pause {reason} when you are truly blocked on the user stops the 30-minute goal reminder and shows them what you wait on, resume turns it back on once you can go on.",
+          "The hands-off goal the user put you on (only while one is open; the goal note names it): criteria {criteria: [...]} writes what done means, each checkable; decide {question, picked, reason, conversation?, images?} records a decision you took instead of asking the user (images: \"latest\" or an entry id of your conversation with screenshots you judged); met {n} / failed {n} mark criterion n; finish {outcome: 'met' | 'blocked' | 'ended', summary} ends the goal and leaves the report card ('ended' when the user ended it before it was met, never 'blocked'); pause {reason} when you are truly blocked on the user stops the 30-minute goal reminder and shows them what you wait on, resume turns it back on once you can go on.",
         parameters: obj({
           action: strEnum(['criteria', 'decide', 'met', 'failed', 'finish', 'pause', 'resume']),
           criteria: opt(arr(str())),
@@ -340,7 +340,7 @@ export default function goalExtension(host: ExtensionHost) {
           reason: opt(str()),
           conversation: opt(int({ minimum: 1 })),
           images: opt(union([lit('latest'), int({ minimum: 1 })])),
-          outcome: opt(strEnum(['met', 'blocked'])),
+          outcome: opt(strEnum(['met', 'blocked', 'ended'])),
           summary: opt(str()),
         }),
         // Not replay-safe (the default): an interrupted call is never rerun, so a decision is recorded at most once.
