@@ -727,6 +727,8 @@ export function workspaces(host: Host) {
     id: ConversationId,
     divergence: string,
     context: Context,
+    /** More slices follow: the landing wakes the branch instead of concluding it. */
+    continues = false,
   ): Promise<SubmitResult> {
     if (!divergence?.trim())
       throw new Error(
@@ -757,6 +759,10 @@ export function workspaces(host: Host) {
       const queued = index.queue.find(
         (item) => item.conversationId === id && item.tip === tip && item.state === 'queued',
       )
+      if (queued) {
+        if (continues) queued.continues = true
+        else delete queued.continues
+      }
       const entry = queued ?? {
         id: `${id}-${tip.slice(0, 7)}-${Date.now().toString(36)}`,
         conversationId: id,
@@ -765,6 +771,7 @@ export function workspaces(host: Host) {
         tip,
         at,
         divergence,
+        ...(continues ? { continues } : {}),
         state: 'queued' as const,
         ...(subject ? { subject } : {}),
         steps: [],
@@ -781,7 +788,7 @@ export function workspaces(host: Host) {
         id: entry.id,
         position: position + 1,
         lander,
-        text: `Submitted ${tip.slice(0, 7)} as ${entry.id}, position ${position + 1} in the ${target} queue. A failure comes back here; a landing reaches whoever started you and concludes you unless work is still under way. Log: lander conversation #${lander}.`,
+        text: `Submitted ${tip.slice(0, 7)} as ${entry.id}, position ${position + 1} in the ${target} queue. A failure comes back here; ${continues ? 'a landing comes back here too, as an input, and reaches whoever started you; you stay open for the next slice' : 'a landing reaches whoever started you and concludes you unless work is still under way'}. Log: lander conversation #${lander}.`,
       }
     }, context)
     host.harness().resume()
