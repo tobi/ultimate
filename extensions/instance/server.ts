@@ -15,7 +15,7 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { basename, join, resolve as resolvePath } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve as resolvePath } from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 import type { Context } from '@earendil-works/chord/context'
 import { int, nullable, obj, opt, str } from '@earendil-works/pi-schema'
@@ -38,6 +38,7 @@ import { Previews } from '../conversations/api.ts'
 import { ListAction } from './refs.ts'
 import { readSettings, userSettingsPath } from '../../lib/settings.ts'
 import { readFamilies } from '../../lib/families-settings.ts'
+import { ProjectTrustStore } from '@earendil-works/pi-coding-agent'
 import { BUILTIN_FAMILIES, DEFAULT_FAMILY, FEATURES } from '../../lib/families.ts'
 
 export const DEFAULT_PREVIEW_MODEL = BUILTIN_FAMILIES[FEATURES.preview.family].model!
@@ -365,6 +366,7 @@ export default function instanceExtension(
     | 'modelRuntime'
     | 'harness'
     | 'projectSettings'
+    | 'projectSetup'
     | 'extensions'
     | 'metadata'
   >,
@@ -432,6 +434,13 @@ export default function instanceExtension(
       const reusedHomeAlreadyHasPrivateConfig = existsSync(userHome)
       if (!reusedHomeAlreadyHasPrivateConfig) await seedUserHome(host.userHome, userHome)
       await linkHome(host.userHome, userHome)
+      // The preview runs this project's checkout: carry the project decision there. A worktree shares its main
+      // checkout's decision only at its top, so a project in a subfolder of a repository, or in a worktree of a
+      // bare one (a monorepo zone, #75544), would otherwise preview without its `.ultimate/`.
+      // A checkout whose top is a linked worktree of a main checkout keeps deciding there, so the entry is unused.
+      const { decision } = await host.projectSetup()
+      if (decision !== null)
+        new ProjectTrustStore(join(userHome, '.ultimate')).set(project, decision)
       const env = previewEnv(process.env, {
         home,
         project,
@@ -540,7 +549,11 @@ export default function instanceExtension(
     if (workspace) {
       if (workspace.state !== 'ready')
         throw new Error('Preview requires an active, ready workspace')
-      project = workspace.path
+      const subfolder = relative(workspace.source, await realpath(host.projectRoot))
+      project =
+        subfolder.startsWith('..') || isAbsolute(subfolder)
+          ? workspace.path
+          : join(workspace.path, subfolder)
       if (projectIsUltimateSource) {
         cwd = workspace.path
         for (const [path, directory, message] of [
