@@ -1203,6 +1203,41 @@ it.concurrent('keeps a landed branch and its checkout while a reply is under way
     `#${id} still has work under way; it reports when it stops.`,
   )
 })
+it.concurrent('keeps a branch that submitted with continues open, wakes it with the card and notes its starter', async () => {
+  const { f, id } = await concluding()
+  const workspace = (await f.service.get(id, context))!
+  const result = await f.call(id, 'workspace', {
+    action: 'submit',
+    divergence: 'None',
+    continues: true,
+  })
+  expect(JSON.stringify(result)).toContain('you stay open for the next slice')
+  const [report] = await submitted(f, id)
+  expect(report).toContain('landed as')
+  expect(report).toContain('Go on with the next slice.')
+  await f.opened.root.waitForIdle(context)
+  expect(await concludedIds(f)).not.toContain(id)
+  expect((await f.service.get(id, context))!.state).toBe('ready')
+  await access(workspace.path)
+  const index = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
+  const submission = Object.keys(index.results).at(-1)!
+  const requests = await f.opened.harness.commit(
+    async (tx) => ({
+      branch: await tx.submissionByRequest(id, `lander:${submission}`),
+      starter: await tx.submissionByRequest(ROOT_CONVERSATION_ID, `lander:${submission}`),
+    }),
+    context,
+  )
+  expect(requests.branch).toMatchObject({ type: 'input', status: 'done' })
+  expect(requests.starter).toMatchObject({ type: 'write' })
+  const reports = (await f.opened.root.context(context)).entries.filter(
+    (entry) => entry.kind === 'workspaces.lander-report',
+  )
+  expect(reports).toHaveLength(1)
+  expect(JSON.stringify(reports[0].model)).toContain(
+    `#${id} goes on with its next slice; it reports when it stops.`,
+  )
+})
 it.concurrent('wakes only the submitter on a failed landing and leaves it open', async () => {
   const { f, id } = await concluding()
   f.host.projectSettings = async () => ({ lander: { checks: ['exit 1'] } })
