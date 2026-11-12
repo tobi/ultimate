@@ -31,6 +31,7 @@ import { afterEach, expect, it } from 'vitest'
 import watchdog, { diagnose } from '../server.ts'
 import { idleNote } from '../idle.ts'
 import type { WatchdogService } from '../api.ts'
+import type { Failure } from '../refs.ts'
 import { Messages } from '../../messages/api.ts'
 import { Branch } from '../../lineage/api.ts'
 import { Standing, Subagents } from '../../subagents/api.ts'
@@ -50,6 +51,10 @@ const error = (text = 'invalid model configuration') =>
 const overloaded = 'Our servers are currently overloaded. Please try again later.'
 const rateHint =
   'Still rate limited after Pi’s retries; once the limit resets (or the agent has another model), resume this conversation with a message'
+const quotaHint =
+  'The provider quota is used up; every run fails until it resets. Resume this conversation once it has; switching it to another provider or model needs the user’s go'
+// The Shopify proxy's 400 when the daily premium model limit is used up (#40, 2026-11-11).
+const premiumLimit = `400 {"error":"BadRequestError","location":"proxy","log_level":"warn","description":"The proxy threw an 'BadRequestError' error","reason":"You've hit your daily premium model limit: $1,000.27 of $1,000.00, counted for your local day in America/Toronto and resetting at 2026-11-12 00:00 America/Toronto (2026-11-12 05:00 UTC). Please switch to a non-premium model (using the /model command in your coding harness). Your cap is set manually, so a temporary increase cannot raise it. For business-critical needs, get a C9 or M5 to approve an exception, then reach out to #token-circuit-breaker.","details":null}`
 const model = { provider: 'faux', modelId: 'faux-1' }
 const Anchor = defineTask<null, { phase: 'done' }, null>({
   name: 'watchdog-test.anchor',
@@ -813,11 +818,11 @@ it.each([
     rateHint,
   ],
   ['429 Too Many Requests', false, rateHint],
-  // Quota and billing errors are not rate limits Pi retries: they fail as usual, without the pause's hint.
+  // Quota errors are not rate limits Pi retries: they last until the quota resets.
   [
     'You exceeded your current quota, please check your plan and billing details. (insufficient_quota)',
     false,
-    undefined,
+    quotaHint,
   ],
   [
     'Claude Code billing: this request was charged to Claude usage credits instead of your plan limits (rate limit status allowed_warning, five_hour).',
@@ -839,6 +844,39 @@ it.each([
 ] as const)('diagnoses %s', (text, temporary, hint) => {
   const message = error(text)
   expect(diagnose(text, message)).toEqual(hint ? { hint, temporary } : { temporary })
+})
+
+it('diagnoses the proxy’s daily premium limit with its reset time', () => {
+  expect(diagnose(premiumLimit, error(premiumLimit))).toEqual({
+    hint: 'The provider quota is used up until 2026-11-12 05:00 UTC; every run fails until then, and later failures against it are not reported again. Resume this conversation after the reset; switching it to another provider or model needs the user’s go',
+    temporary: false,
+    resetAt: Date.parse('2026-11-12T05:00:00Z'),
+  })
+})
+
+it('reports a quota failure once per recipient and reset, never retrying it', async () => {
+  const f = await fixture((transcript) =>
+    inputText(transcript) === 'fail' ? error(premiumLimit) : fauxAssistantMessage('ok'),
+  )
+  const first = await f.conversation('First')
+  const second = await f.conversation('Second')
+  const parent = await f.conversation('Coordinator')
+  const child = await f.conversation('Scout', parent)
+  for (const id of [first, second, first, child]) await (await f.submit(id, 'fail')).wait(context)
+  await until(async () => (await f.failures(0)).length === 4)
+  await f.harness.waitForIdle(context)
+  expect((await f.entries()).map((entry) => entry.data)).toEqual([
+    expect.objectContaining({ conversation: first, resetAt: Date.parse('2026-11-12T05:00:00Z') }),
+  ])
+  expect((await f.entries(parent)).map((entry) => (entry.data as Failure).conversation)).toEqual([
+    child,
+  ])
+  for (const id of [first, second, child])
+    expect(
+      (await f.host.scanSubmissions({ conversationId: id }, 100, undefined, context)).items.some(
+        (input) => input.requestId?.startsWith('watchdog-retry:'),
+      ),
+    ).toBe(false)
 })
 
 it('checks all siblings of a dense owner and times idleNote with 1500 conversations', async () => {

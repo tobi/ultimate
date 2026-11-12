@@ -43,7 +43,12 @@ const Reported = defineDoc<{ failures: ReportedFailure[] }>({
   initial: () => ({ failures: [] }),
 })
 
-const Receipts = defineDoc<{ highWater?: number; tasks: Record<string, true> }>({
+/** `quota` maps `<recipient>:<resetAt>` to the reset time of a quota failure already reported to that recipient. */
+const Receipts = defineDoc<{
+  highWater?: number
+  tasks: Record<string, true>
+  quota?: Record<string, number>
+}>({
   kind: 'watchdog.receipts',
   version: 1,
   scope: 'conversation',
@@ -100,7 +105,36 @@ async function lastErrorBeforeNextGeneration(tx: Tx, task: Generation, next?: Ge
   return { upper, assistant }
 }
 
+const QUOTA =
+  /insufficient_quota|exceeded your current quota|quota exceeded|usage limit (?:reached|exceeded)|hit your [\w ]*limit/i
+const RESET =
+  /reset[\s\S]*?(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)\s*(UTC|Z|[+-]\d{2}:?\d{2})(?![\w:])/i
+
+export function quotaReset(error: string) {
+  const match = RESET.exec(error)
+  if (!match) return undefined
+  const at = Date.parse(
+    `${match[1]}T${match[2]}${match[3].toUpperCase() === 'UTC' ? 'Z' : match[3]}`,
+  )
+  return Number.isNaN(at) ? undefined : at
+}
+
+const utc = (at: number) => `${new Date(at).toISOString().slice(0, 16).replace('T', ' ')} UTC`
+
 export function diagnose(error: string, assistant?: AssistantMessage) {
+  if (QUOTA.test(error)) {
+    const resetAt = quotaReset(error)
+    return resetAt === undefined
+      ? {
+          hint: 'The provider quota is used up; every run fails until it resets. Resume this conversation once it has; switching it to another provider or model needs the user’s go',
+          temporary: false,
+        }
+      : {
+          hint: `The provider quota is used up until ${utc(resetAt)}; every run fails until then, and later failures against it are not reported again. Resume this conversation after the reset; switching it to another provider or model needs the user’s go`,
+          temporary: false,
+          resetAt,
+        }
+  }
   if (rateLimited(error))
     return {
       hint: 'Still rate limited after Pi’s retries; once the limit resets (or the agent has another model), resume this conversation with a message',
@@ -187,7 +221,14 @@ async function details(tx: Tx, metadata: ExtensionHost['metadata'], task: Genera
 
 export default function watchdog(host: ExtensionHost) {
   const Watchdog = defineTask<
-    Failure & { failedTask: number; recipient: ConversationId; temporary: boolean; until: number },
+    Failure & {
+      failedTask: number
+      recipient: ConversationId
+      temporary: boolean
+      until: number
+      /** A quota failure its recipient was already told about for the same reset: recorded, never sent again. */
+      grouped?: boolean
+    },
     { phase: 'wait' } | { phase: 'retry' } | { phase: 'report' },
     null
   >({
@@ -223,6 +264,7 @@ export default function watchdog(host: ExtensionHost) {
       report: async (task, runtime, ctx) => {
         const { conversation, title, error, step, hint, retried, failedTask, recipient } =
           task.input
+        const { resetAt, grouped } = task.input
         const data: Failure = {
           conversation,
           title,
@@ -230,11 +272,12 @@ export default function watchdog(host: ExtensionHost) {
           step,
           retried,
           ...(hint ? { hint } : {}),
+          ...(resetAt !== undefined ? { resetAt } : {}),
         }
         const content = `[run failed] #${conversation} "${title}": ${error}. Last step: ${step}.${retried ? ' After one automatic retry.' : ''}${hint ? ` ${hint}.` : ''}`
-        if (recipient === conversation) {
+        if (!grouped && recipient === conversation) {
           host.notice(content)
-        } else {
+        } else if (!grouped) {
           const target = (await runtime.conversation(recipient, ctx))!
           await target.submit(
             {
@@ -322,7 +365,17 @@ export default function watchdog(host: ExtensionHost) {
         throw new Error('Watchdog needs @ultimate to report a failed run')
       if (task.state.status !== 'terminal' || task.state.outcome.status !== 'failed') return
       const error = task.state.outcome.error.message
-      const { hint, temporary } = diagnose(error, info.assistant)
+      const { hint, temporary, resetAt } = diagnose(error, info.assistant)
+      const failedAt = task.endedAt ?? Date.now()
+      let grouped = false
+      if (resetAt !== undefined && resetAt > failedAt) {
+        receipts.quota ??= {}
+        for (const [key, at] of Object.entries(receipts.quota))
+          if (at <= failedAt) delete receipts.quota[key]
+        const key = `${recipient}:${resetAt}`
+        grouped = key in receipts.quota
+        receipts.quota[key] = resetAt
+      }
       await tx.createTask(
         Watchdog,
         {
@@ -333,9 +386,11 @@ export default function watchdog(host: ExtensionHost) {
           error,
           step: info.step,
           ...(hint ? { hint } : {}),
+          ...(resetAt !== undefined ? { resetAt } : {}),
+          ...(grouped ? { grouped } : {}),
           retried: runInputs.some((input) => input.requestId?.startsWith('watchdog-retry:')),
           temporary,
-          until: (task.endedAt ?? Date.now()) + TEMPORARY_FAILURE_RETRY_DELAY_MS,
+          until: failedAt + TEMPORARY_FAILURE_RETRY_DELAY_MS,
         },
         { conversationId: recipient, ownership: { kind: 'conversation' }, background: true },
       )
