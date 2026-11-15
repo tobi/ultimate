@@ -43,7 +43,6 @@ const Reported = defineDoc<{ failures: ReportedFailure[] }>({
   initial: () => ({ failures: [] }),
 })
 
-/** `quota` maps `<recipient>:<resetAt>` to the reset time of a quota failure already reported to that recipient. */
 const Receipts = defineDoc<{
   highWater?: number
   tasks: Record<string, true>
@@ -226,7 +225,6 @@ export default function watchdog(host: ExtensionHost) {
       recipient: ConversationId
       temporary: boolean
       until: number
-      /** A quota failure its recipient was already told about for the same reset: recorded, never sent again. */
       grouped?: boolean
     },
     { phase: 'wait' } | { phase: 'retry' } | { phase: 'report' },

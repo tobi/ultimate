@@ -434,10 +434,6 @@ export default function instanceExtension(
       const reusedHomeAlreadyHasPrivateConfig = existsSync(userHome)
       if (!reusedHomeAlreadyHasPrivateConfig) await seedUserHome(host.userHome, userHome)
       await linkHome(host.userHome, userHome)
-      // The preview runs this project's checkout: carry the project decision there. A worktree shares its main
-      // checkout's decision only at its top, so a project in a subfolder of a repository, or in a worktree of a
-      // bare one (a monorepo zone, #75544), would otherwise preview without its `.ultimate/`.
-      // A checkout whose top is a linked worktree of a main checkout keeps deciding there, so the entry is unused.
       const { decision } = await host.projectSetup()
       if (decision !== null)
         new ProjectTrustStore(join(userHome, '.ultimate')).set(project, decision)

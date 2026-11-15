@@ -562,7 +562,6 @@ export function createLander(
                 hint: string,
               ) => {
                 try {
-                  // No diffstat: over a monorepo's main it takes minutes, and nothing reads it.
                   await git(
                     { cwd: path, timeout: 5 * 60_000 },
                     'merge',
@@ -759,8 +758,6 @@ export function createLander(
           const firstFastForwardCandidate: Landed = {
             sha: integrated,
             base,
-            // Capped: a landing that merges a monorepo's main brings hundreds of thousands of commits and paths,
-            // more than git()'s output buffer holds, and the landing had already happened when listing them failed.
             commits: lines(
               await git(source, 'log', '--oneline', '-n', '300', `${base}..${integrated}`),
             ),
