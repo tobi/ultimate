@@ -28,7 +28,6 @@ export type QueueEntry = {
   tip: string
   at: SubmitTimeEntryId
   divergence: string
-  /** More slices follow: a landing leaves the branch open and wakes it with the card. */
   continues?: boolean
   state: 'queued' | 'landing'
   subject?: SubmitTimeSubject

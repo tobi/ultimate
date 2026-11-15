@@ -48,7 +48,6 @@ const Reported = defineDoc<{ failures: ReportedFailure[] }>({
   initial: () => ({ failures: [] }),
 })
 
-/** `quota` maps `<recipient>:<resetAt>` to the reset time of a quota failure already reported to that recipient. */
 const Receipts = defineDoc<{
   highWater?: number
   tasks: Record<string, true>
