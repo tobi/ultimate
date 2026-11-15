@@ -727,7 +727,6 @@ export function workspaces(host: Host) {
     id: ConversationId,
     divergence: string,
     context: Context,
-    /** More slices follow: the landing wakes the branch instead of concluding it. */
     continues = false,
   ): Promise<SubmitResult> {
     if (!divergence?.trim())
