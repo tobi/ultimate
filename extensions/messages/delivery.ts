@@ -12,6 +12,7 @@ import { locate, postAction } from '../../lib/remote.ts'
 import { Messages } from './api.ts'
 import type { Message } from './api.ts'
 import { imagesOf } from '../../lib/entries.ts'
+import { awaitsStarter } from '../../lib/message-state.ts'
 import { append, terminal } from './log.ts'
 import { remoteLabel, servesLine } from './addresses.ts'
 import { MessageEntry, ReplyEntry } from '../entries/api.ts'
@@ -88,9 +89,14 @@ export function delivery(host: ExtensionHost) {
 
         const answeredQuestionLabel =
           m.from === 'user' && m.re !== undefined ? `Answer to message ${m.re}:\n` : ''
+        const returns = m.reply
+          ? `\nAnswer here; your answer is sent to ${task.input.fromLabel} automatically. Do not use message to reply.`
+          : awaitsStarter(m)
+            ? `\n${task.input.fromLabel} waits for your answer to its decisions: your answer here is sent to it automatically.`
+            : `\nOne-way message: ${task.input.fromLabel} expects no answer, and your answer here is not sent to it. If it needs to hear from you, message it.`
         const body = task.input.note
           ? `Note from ${task.input.fromLabel} (one-way update, no answer goes back):\n${m.text}${serves}`
-          : `Message from ${task.input.fromLabel}${m.from === 'remote' ? " (another project's Ultimate, not the user)" : ''}:\n${answeredQuestionLabel}${m.text}${m.reply ? `\nAnswer here; your answer is sent to ${task.input.fromLabel} automatically. Do not use message to reply.` : `\nOne-way message: ${task.input.fromLabel} expects no answer, and your answer here is not sent to it. If it needs to hear from you, message it.`}${serves}`
+          : `Message from ${task.input.fromLabel}${m.from === 'remote' ? " (another project's Ultimate, not the user)" : ''}:\n${answeredQuestionLabel}${m.text}${returns}${serves}`
         const content = replayStableImages.length
           ? [{ type: 'text' as const, text: body }, ...replayStableImages]
           : body

@@ -36,23 +36,26 @@ report.**
   reply-enabled message), it goes as a one-way message with `report: true`, which wakes the starter; otherwise as a
   note, since the branch will run again. A landing concludes the branch and wakes the starter itself, asking through
   the `workspaces.branches` point this extension provides (`starter`, `underway`).
-- **Answers back down.** The primary agent's final answer goes to each branch whose reply or report was an input of
-  that run (not concluded, not messaged in the run) with `routed: true`, so a weigh-in reaches the branch. The run's
-  other inputs (the user's, another Ultimate's, a card) neither receive it nor keep it from a branch.
+- **Answers back down.** The primary agent's final answer goes to each branch whose reply, or whose report with a
+  `Decisions:` block, was an input of that run (not concluded, not messaged in the run) with `routed: true`, so a
+  weigh-in reaches the branch; that report's input says so. A report without one is a notification: its input says no
+  answer goes back, and none does. The run's other inputs (a notification, the user's, another Ultimate's, a card)
+  neither receive it nor keep it from a branch; with none of them owed, the answer stays in the primary's conversation.
 - **Results to the asker.** A branch started while its starter owed an agent an answer records it as `serves`; once the
   branch is concluded, the starter's final answer goes to that agent instead, another project's Ultimate included.
 - **Everything else wakes:** reply-enabled messages and one-way messages from anyone who is not the recipient's child or
   branch.
 
 Routing cannot loop: an answer to a routed answer is an `echo`, placed as a note that wakes no one and routes no
-further. A branch whose latest report or reply came after @ultimate's latest message to it shows as `awaiting
+further. A branch whose latest reply or report with decisions (`awaitsStarter` in `lib/message-state.ts`, the rule
+routing uses too) came after @ultimate's latest message to it shows as `awaiting
 @ultimate`, as does one with a reply-enabled message to @ultimate open; @ultimate messaging or concluding it clears
 that.
 
 ### Messages to the user
 
 A message to `user` shows in the sender's transcript and starts no run. For @ultimate it is its answer: the run ends
-without restating it, unless a reply-enabled message it has read is still open or a branch whose reply or report the
+without restating it, unless a reply-enabled message it has read is still open or a branch whose reply or decisions the
 run read still waits for its answer: the run goes on to its final answer, which routing sends there. While a user's message it has read is
 open, @ultimate's message to the user answers it and, with `questions`, stays open itself, so it can ask one card after
 another.

@@ -1,6 +1,6 @@
 import { parseConversationId } from '../../lib/ids.ts'
 import type { EntryRecord, ConversationId } from '@earendil-works/pi-durable'
-import { isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
+import { awaitsStarter, isOpen, isOwed, openQuestion } from '../../lib/message-state.ts'
 import type { MessagesData, Message, Remote } from './refs.ts'
 import { MessageEntry, NoteEntry, ReplyEntry } from '../entries/ui.tsx'
 import { FinishedEntry, AbstractEntry } from '../lineage/ui.tsx'
@@ -81,7 +81,7 @@ export function pendingReport(
   let pending: Message | undefined
   for (const m of messages)
     if (m.from === from && m.to === to) {
-      if ((m.report || m.awaits) && !settled(m, concludedSince)) pending = m
+      if (awaitsStarter(m) && !settled(m, concludedSince)) pending = m
     } else if (m.from === to && m.to === from) pending = undefined
   return pending
 }
@@ -269,7 +269,7 @@ export function openMessages(
   concludedSince: (id: ConversationId) => number | undefined,
 ) {
   const reporters = new Set(
-    messages.filter((m) => m.to === id && (m.report || m.awaits)).map((m) => m.from),
+    messages.filter((m) => m.to === id && awaitsStarter(m)).map((m) => m.from),
   )
   const reports = [...reporters].flatMap(
     (from) => pendingReport(messages, from, id, concludedSince) ?? [],

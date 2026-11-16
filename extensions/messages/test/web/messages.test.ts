@@ -576,15 +576,24 @@ describe('conversation state', () => {
     ).toBe('done')
   })
 
-  it('awaits the primary agent after reporting to it, until the primary agent messages it', () => {
+  it('awaits the primary agent after reporting decisions to it, until the primary agent messages it', () => {
     const branch = { id: 5, kind: 'other' as const, runState: 'answered' as const, primary: 3 }
     const report = {
       from: 5 as ConversationId,
       to: 3 as ConversationId,
       reply: false,
       report: true as const,
+      text: 'Assessed.\n- **Decisions:** 1. (a) small; (b) large.',
     }
     expect(conversationState(branch, messagesLog(report))).toBe('awaiting')
+    // A report without decisions is a notification (#115585's two-hour pushes): nothing goes back to it.
+    expect(conversationState(branch, messagesLog({ ...report, text: 'Pushed abc123' }))).toBe(
+      'idle',
+    )
+    expect(
+      openMessages(messagesLog({ ...report, text: 'Pushed abc123' }).messages, 3, () => undefined)
+        .owed,
+    ).toEqual([])
     // A branch's reply awaits its answer; a standing agent's reply just answered (life's @google).
     const reply = { from: 5 as ConversationId, to: 3 as ConversationId, reply: false, re: 1 }
     expect(conversationState(branch, messagesLog({ ...reply, awaits: true }))).toBe('awaiting')
@@ -611,6 +620,7 @@ describe('conversation state', () => {
       to: 3 as ConversationId,
       reply: false,
       report: true as const,
+      text: 'Decisions:\n1. (a) yes; (b) no.',
       at: 100,
     }
     const owed = (since: number | undefined, ...more: Partial<Message>[]) =>

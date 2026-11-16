@@ -12,7 +12,7 @@ import { ConversationsApi } from '../conversations/api.ts'
 import { Subagents } from '../subagents/api.ts'
 import { WorkspacesApi } from '../workspaces/api.ts'
 import { Messages } from './api.ts'
-import { isOpen } from '../../lib/message-state.ts'
+import { awaitsStarter, isOpen } from '../../lib/message-state.ts'
 import { terminal } from './log.ts'
 import type { Message } from './api.ts'
 import type { DeliveredMessage, Remote } from './refs.ts'
@@ -102,6 +102,7 @@ export async function reported(
   const log = await tx.doc(Messages, ROOT_CONVERSATION_ID)
   const requestKeyWithinRemoteLimit = (message: number) => `request:${message}`
   const newestAnsweredBranchMessage = new Map<ConversationId, number>()
+  const branchesOwedAnAnswer = new Set<ConversationId>()
   const askers: { source: string; key: string; serves: Serves }[] = []
   const messaged = (after: (m: Message) => boolean, to: (m: Message) => boolean) =>
     log.messages.some((m) => m.from === starter && after(m) && to(m))
@@ -147,6 +148,8 @@ export async function reported(
     if (typeof data?.from !== 'number' || data.echo === true) continue
     const from = data.from
     if ((await tx.doc(Started, from)).by !== starter) continue
+    const sent = log.messages.find((m) => m.id === data.id)
+    if (ReplyEntry.is(entry) || (sent && awaitsStarter(sent))) branchesOwedAnAnswer.add(from)
     newestAnsweredBranchMessage.set(
       from,
       Math.max(newestAnsweredBranchMessage.get(from) ?? 0, data.id ?? 0),
@@ -157,6 +160,7 @@ export async function reported(
   for (const [branch, since] of newestAnsweredBranchMessage) {
     if (!concluded.has(branch)) {
       if (
+        branchesOwedAnAnswer.has(branch) &&
         !messaged(
           (m) => m.id > since,
           (m) => m.to === branch,

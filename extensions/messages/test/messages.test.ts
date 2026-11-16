@@ -1609,7 +1609,7 @@ it("leaves a branch's answer to @ultimate's routed answer as a note that does no
   // "Holding." (#590943/599498) woke @ultimate again (#574726/599502). It happened four times.
   const f = await fixture()
   const b = await branched(f)
-  await b.later('OK, holding quietly. WEIGH')
+  await b.later('OK, holding quietly.\nDecisions:\n1. Hold? (a) yes; (b) no. WEIGH')
   await f.opened.root.waitForIdle(context)
   await b.settled()
   await b.branch.waitForIdle(context)
@@ -1625,6 +1625,55 @@ it("leaves a branch's answer to @ultimate's routed answer as a note that does no
     undefined,
   ])
   expect(view.entries.filter((e) => e.id > note.id && e.kind === 'pi.assistant')).toHaveLength(0)
+})
+it("keeps @ultimate's answer to a branch's one-way report in its own conversation, with or without notes", async () => {
+  // #115585 reports each 2-hour push one-way; @ultimate's answers that woke with it, written for the user or for other
+  // branches whose notes it had read, went down to #115585 five times (#115585/136780, /139336, /149791).
+  const f = await fixture()
+  const pusher = await branched(f)
+  const other = await branched(f)
+  await other.later('SEND ' + JSON.stringify({ to: '#1', text: 'Scouts running', reply: false }))
+  await pusher.later('Pushed abc123 WEIGH')
+  await f.opened.root.waitForIdle(context)
+  await pusher.later('Nothing new to push WEIGH')
+  await f.opened.root.waitForIdle(context)
+  await pusher.settled()
+  expect(f.observed).toContain(
+    `Message from #${pusher.id}:\nAnswer: Nothing new to push WEIGH\nOne-way message: #${pusher.id} expects no answer, and your answer here is not sent to it. If it needs to hear from you, message it.`,
+  )
+  const answers = (await f.opened.root.context(context)).entries.filter(
+    (e) => e.kind === 'pi.assistant' && JSON.stringify(e.model).includes('WEIGH'),
+  )
+  expect(answers).toHaveLength(2)
+  expect((await f.log())!.messages.filter((m) => m.from === 1 && m.routed)).toEqual([])
+})
+it("routes @ultimate's answer only to the branch awaiting it on its decisions, not to a one-way report beside it", async () => {
+  const f = await fixture()
+  const pusher = await branched(f)
+  const deciding = await branched(f)
+  await f.opened.root.submit({ type: 'input', content: 'HOLD' }, context)
+  await until(f.holding)
+  await (await pusher.branch.submit({ type: 'input', content: 'Pushed' }, context)).wait(context)
+  await (
+    await deciding.branch.submit(
+      { type: 'input', content: 'Assessed.\n- **Decisions:** 1. (a) small; (b) large.' },
+      context,
+    )
+  ).wait(context)
+  await until(
+    async () =>
+      (await f.opened.harness.snapshot(InboxDoc, f.opened.root.id, context))!.items.length === 2,
+  )
+  f.hold.release()
+  await until(async () => (await f.log())!.messages.some((m) => m.from === 1 && m.routed))
+  await f.opened.root.waitForIdle(context)
+  await deciding.settled()
+  expect(f.observed.join('\n')).toContain(
+    `#${deciding.id} waits for your answer to its decisions: your answer here is sent to it automatically.`,
+  )
+  const routed = (await f.log())!.messages.filter((m) => m.from === 1 && m.routed)
+  expect(routed.map((m) => m.to)).toEqual([deciding.id])
+  expect(routed[0].text).not.toContain('together')
 })
 it("sends @ultimate's answer to a branch it concluded to the agent whose request the branch worked on", async () => {
   // danielgriesser.com: @writer asked @ultimate for a briefing, got "I've started branch #14919", and the briefing,
