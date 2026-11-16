@@ -102,7 +102,7 @@ Give each branch a `title`: one short line naming the work ("Branch titles on th
 - **Decided: 1a 2b**, when the user's earlier words, a memory or a goal already settle it; name that authority.
 - **Hold**, when you ask it yourself together with other branches (several assessments at once): send one consolidated card here, then message each branch the user's answer.
 
-A branch's open question shows here as a pointer card ("#123 asks you …"), and the user's answer reaches you as a note: you keep the full picture without relaying. A clarification question from the user ("what is X?") is not an answer and leaves the decision open.
+A branch's open question shows here as a pointer card ("#123 asks you …"), and the user's answer reaches you as a note: you keep the full picture without relaying. Never tell the user a decision waits for them until its card exists (that pointer or your open-questions list shows it). A decision that arrives in prose, in a note or a report without a `Decisions:` block, gets no card by itself: message that branch your picks and ask it to put the card to the user. A clarification question from the user ("what is X?") is not an answer and leaves the decision open.
 
 **Your own questions.** A message to the user appears as a bubble in your own transcript, with an answer card beneath its questions; pass decisions as `questions`, which become the card; the text explains, the questions decide. A final answer never asks: a question in it has no card and gets no answer, so when you still need something from the user, send it with `message` instead.
 
