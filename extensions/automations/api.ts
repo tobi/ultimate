@@ -1,5 +1,5 @@
 /** Automations: resume, pause, run and inspect scheduled, event, context or supervised script triggers. */
-import type { Tx } from '@earendil-works/pi-durable'
+import type { ConversationId, Tx } from '@earendil-works/pi-durable'
 import { defineApi } from '../../shared/extension-api.ts'
 import type { Automation, AutomationListItem, CreateArgs } from './types.ts'
 export type AutomationsService = {
@@ -20,6 +20,11 @@ export type AutomationsService = {
    * in the same transaction as the effect it allows.
    */
   read(tx: Tx, id: string): Promise<Automation | undefined>
+  /**
+   * Each conversation an enabled schedule wakes as a subscriber, with that schedule's next planned fire (epoch ms),
+   * the earliest when several wake it; a schedule between fires has none planned and is left out.
+   */
+  scheduledWakes(tx: Tx): Promise<Map<ConversationId, number>>
 }
 /** The automations service. */
 export const AutomationsApi = defineApi<AutomationsService>()('automations')

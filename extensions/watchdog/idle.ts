@@ -1,6 +1,7 @@
 import { defineDoc, LiveDoc, ROOT_CONVERSATION_ID } from '@earendil-works/pi-durable'
 import type { ConversationId, Cursor, Tx } from '@earendil-works/pi-durable'
 import type { ExtensionHost } from '../../server/extensions.ts'
+import { AutomationsApi } from '../automations/api.ts'
 import { ConversationsApi } from '../conversations/api.ts'
 import { Branch } from '../lineage/api.ts'
 import { Messages } from '../messages/api.ts'
@@ -27,6 +28,8 @@ export async function idleNote(
   const concluded = await host.need(ConversationsApi).concludedIn(tx)
   const queue = (await tx.doc(host.need(WorkspacesApi).doc, ROOT_CONVERSATION_ID)).queue
   const excluded = new Set([...concluded, ...queue.map((item) => item.conversationId)])
+  const wakes = await host.need(AutomationsApi).scheduledWakes(tx)
+  for (const [id, at] of wakes) if (at > now) excluded.add(id)
   const messages = (await tx.doc(Messages, ROOT_CONVERSATION_ID)).messages
   const waiting = new Set<number>()
   for (const message of messages)

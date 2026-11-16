@@ -803,6 +803,16 @@ export const actions = {
   }),
 }
 export const pollActions = ['list', 'log', 'script']
+export async function scheduledWakes(tx: Tx) {
+  const wakes = new Map<ConversationId, number>()
+  for (const a of Object.values((await tx.doc(Automations)).automations)) {
+    if (!a.enabled || !a.schedule || a.nextAt === undefined) continue
+    for (const subscriber of a.subscribers)
+      if (typeof subscriber === 'number')
+        wakes.set(subscriber, Math.min(wakes.get(subscriber) ?? a.nextAt, a.nextAt))
+  }
+  return wakes
+}
 export default function automations(host: ExtensionHost) {
   host.need(SubagentsApi)
   host.need(MessagesApi)
@@ -818,6 +828,7 @@ export default function automations(host: ExtensionHost) {
       const a = (await tx.doc(Automations)).automations[id]
       return a && json(a)
     },
+    scheduledWakes,
   })
   api.trigger.install()
   host.onOpen(async () => {

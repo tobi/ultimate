@@ -38,6 +38,8 @@ import { Standing, Subagents } from '../../subagents/api.ts'
 import subagents from '../../subagents/server.ts'
 import { Workspaces } from '../../workspaces/workspaces.ts'
 import { concludedIn } from '../../conversations/server.ts'
+import { Automations, scheduledWakes } from '../../automations/server.ts'
+import type { Automation } from '../../automations/types.ts'
 import { Metadata } from '../../../server/metadata.ts'
 import { UiState } from '../../../shared/ui-state.ts'
 import type { ExtensionHost } from '../../../server/extensions.ts'
@@ -112,7 +114,11 @@ async function fixture(
     scanSubmissions: (...args: Parameters<MemoryStorage['scanSubmissions']>) =>
       storage.scanSubmissions(...args),
     need: (api: { name: string }) =>
-      api.name === 'conversations' ? { concludedIn } : { doc: Workspaces },
+      api.name === 'conversations'
+        ? { concludedIn }
+        : api.name === 'automations'
+          ? { scheduledWakes }
+          : { doc: Workspaces },
   } as unknown as ExtensionHost
   const original = watchdog(host)
   const backend = {
@@ -1022,4 +1028,44 @@ it('reports a branch idle after 30 minutes, and one awaiting a reply only after 
     ids.fresh,
     ids.asking,
   ])
+})
+
+it('leaves out a branch a schedule wakes until that schedule misses its fire', async () => {
+  // #115585 pushes on automation A4's two-hour schedule and is idle by design between fires; it was listed idle
+  // again and again.
+  const f = await fixture()
+  const id = await f.conversation('pusher')
+  const schedule = (a: Partial<Automation>) =>
+    ({
+      id: 'A4',
+      name: 'push',
+      enabled: true,
+      createdAt: 0,
+      updatedAt: 0,
+      schedule: { kind: 'every', ms: 2 * 3_600_000 },
+      subscribers: [id],
+      runs: [],
+      fires: 1,
+      ...a,
+    }) as Automation
+  await f.harness.commit(async (tx) => {
+    ;(await tx.doc(Branch, id)).branch = {
+      from: ROOT_CONVERSATION_ID,
+      at: 0 as EntryId,
+      intent: 'push',
+    }
+    ;(await tx.doc(Metadata, id)).answerAt = 0
+    ;(await tx.doc(Automations)).automations.A4 = schedule({ nextAt: 2 * 3_600_000 })
+  }, context)
+  const note = (now: number) =>
+    f.harness.commit((tx) => idleNote(tx, f.host, f.ultimate, now), context)
+  expect(await note(3_600_000)).toBeUndefined()
+  expect((await note(2 * 3_600_000 + 60_000))?.entries[0].data.ids).toEqual([id])
+  await f.harness.commit(async (tx) => {
+    ;(await tx.doc(Automations)).automations.A4 = schedule({
+      enabled: false,
+      nextAt: 4 * 3_600_000,
+    })
+  }, context)
+  expect(await note(3 * 3_600_000)).toBeUndefined()
 })
