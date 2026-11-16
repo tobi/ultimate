@@ -446,10 +446,8 @@ export function createLander(
           }, context)
         const summary = (landed: Landed, sha: string, how = '') =>
           [
-            landed.commits.length
-              ? `landed${how} as ${sha.slice(0, 7)} on ${entry.target}.`
-              : `had nothing new to land on ${entry.target}.`,
-            ...(landed.commits.length ? [`Commits:\n${landed.commits.join('\n')}`] : []),
+            `landed${how} as ${sha.slice(0, 7)} on ${entry.target}.`,
+            `Commits:\n${landed.commits.join('\n')}`,
             ...landed.flaky.map((command) => `Flaky: ${command}`),
           ].join('\n')
         const fail = async (reason: string, output?: string, hint?: string) => {
@@ -553,6 +551,15 @@ export function createLander(
               mergedBeforeChecks?.sha ?? (await git(source, 'rev-parse', `refs/heads/${target}`)),
             )
             if (!mergedBeforeChecks) {
+              if (
+                !landingFromEarlierTask &&
+                (await contains(source, entry.tip, `refs/heads/${target}`))
+              )
+                return await fail(
+                  `nothing new to land: submitted tip ${entry.tip.slice(0, 7)} is already on ${target}`,
+                  undefined,
+                  'If this work landed already, nothing is left to land; otherwise commit the work you meant to submit, verify and submit again.',
+                )
               await step('preparing')
               const base = await git(path, 'rev-parse', 'HEAD')
               const mergeOrReportConflict = async (

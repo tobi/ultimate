@@ -203,7 +203,9 @@ The fast-forward records `landed: { sha, base, commits, paths, flaky }` on the q
 workspace's `landed`. A lander task that ends after that and before its report, for example one faulted because a
 reload of this extension changed the Workspaces document, loses its memos but not that record: whichever task picks
 the entry next skips merging and checks, pushes exactly `landed.sha` when the target still contains it, and reports
-the original landing. "Nothing new to land" means the tip was already in the target before this submission.
+the original landing. A submission whose tip the target already contains, and that recorded no landing of its own,
+lands nothing: before any merge or check it fails back to the submitter with "nothing new to land: submitted tip
+<sha> is already on <target>", never as a landing.
 
 The extension restarts a lander for every source whose queue holds submissions while its task is missing or ended:
 when the harness opens, on each reload of the extension, and at once when a task of the previous code faults. A fault
