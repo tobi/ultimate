@@ -1229,6 +1229,26 @@ it.concurrent('wakes only the submitter on a failed landing and leaves it open',
     ),
   ).toHaveLength(0)
 })
+it.concurrent('reports a resubmitted tip already on the target to the submitter as nothing new, before any check', async () => {
+  // #176474 submitted d048c89 again while its first submission of it was landing; the lander ran every check and
+  // reported "had nothing new to land" as a landing (submission 176474-d048c89-mwipwetw in lander #115422).
+  const { f, id } = await concluding()
+  const tip = await git((await f.service.get(id, context))!.path, 'rev-parse', 'HEAD')
+  await f.service.submit(id, 'None', context, true)
+  await submitted(f, id)
+  f.host.projectSettings = async () => ({ lander: { checks: ['exit 1'] } })
+  const { id: again } = await f.service.submit(id, 'None', context, true)
+  const [, report] = await submitted(f, id)
+  expect(report).toContain(
+    `(#${id}, ${tip.slice(0, 7)}) was not landed: nothing new to land: submitted tip ${tip.slice(0, 7)} is already on main`,
+  )
+  const index = (await f.opened.harness.snapshot(Workspaces, ROOT_CONVERSATION_ID, context))!
+  expect(index.results[again]).toMatchObject({ outcome: 'failed' })
+  expect(index.results[again].steps.map((row) => row.step)).not.toContain('checking: exit 1')
+  expect(
+    (await f.host.eventLog.recent({ events: [SubmissionLanded] })).map((e) => e.data.submission),
+  ).not.toContain(again)
+})
 it.concurrent('delivers a message to a resumed branch whose checkout conclude released', async () => {
   const { f, id } = await concluding()
   await f.service.submit(id, 'None', context)
