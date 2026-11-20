@@ -12,6 +12,9 @@ export interface UnitOptions {
   home: string
   node: string
   path: string
+  name?: string
+  port?: number
+  envFile?: string
 }
 
 export interface Unit {
@@ -27,6 +30,8 @@ interface Service {
   env: Record<string, string>
   args: string[]
 }
+
+const unitName = (name?: string) => (name ? `ultimate-${name}.service` : 'ultimate.service')
 
 function unit(description: string, service: string[]) {
   return [
@@ -122,28 +127,33 @@ export function servicePath(node: string, path: string, misread?: RegExp) {
 }
 
 function services(options: UnitOptions, path: string): Service[] {
-  const { clone, project, node } = options
+  const { clone, project, node, name, port } = options
   return [
     {
-      unit: 'ultimate.service',
+      unit: unitName(name),
       label: 'com.ultimate.app',
       description: `Ultimate (${project})`,
       cwd: project,
-      env: { PATH: path, ULTIMATE_NO_OPEN: '1' },
+      env: {
+        PATH: path,
+        ULTIMATE_NO_OPEN: '1',
+        ...(port === undefined ? {} : { ULTIMATE_PORT: String(port) }),
+      },
       args: [node, join(clone, 'bin/ultimate.ts')],
     },
   ]
 }
 
 export function renderUnits(options: UnitOptions): Unit[] {
-  const { clone, project, home, node } = options
-  checkPaths({ clone, project, home, node })
+  const { clone, project, home, node, envFile } = options
+  checkPaths({ clone, project, home, node, ...(envFile ? { envFile } : {}) })
   const path = servicePath(node, options.path, systemdSpecialCharacters)
   return services(options, path).map((service) => ({
     name: service.unit,
     content: unit(service.description, [
       `WorkingDirectory=${service.cwd}`,
       ...Object.entries(service.env).map(([key, value]) => `Environment=${key}=${value}`),
+      ...(envFile ? [`EnvironmentFile=${envFile}`] : []),
       `ExecStart=${service.args.join(' ')}`,
     ]),
   }))
@@ -258,10 +268,23 @@ function main() {
   const { values } = parseArgs({
     options: {
       project: { type: 'string' },
+      name: { type: 'string' },
+      port: { type: 'string' },
+      'env-file': { type: 'string' },
       'dry-run': { type: 'boolean' },
     },
   })
   const dry = values['dry-run'] === true
+  if (values.name !== undefined && !/^[a-z0-9][a-z0-9-]*$/.test(values.name))
+    throw new Error('--name is lowercase letters, digits and dashes, such as my-app.')
+  const port = values.port === undefined ? undefined : Number(values.port)
+  if (port !== undefined && !(Number.isInteger(port) && port >= 1 && port <= 65535))
+    throw new Error('--port is a port number from 1 to 65535.')
+  if (
+    process.platform === 'darwin' &&
+    (values.name !== undefined || values.port !== undefined || values['env-file'] !== undefined)
+  )
+    throw new Error('--name, --port and --env-file are for systemd units on Linux.')
   const home = homedir()
   const clone = resolve(fileURLToPath(new URL('..', import.meta.url)))
   const options = {
@@ -270,6 +293,9 @@ function main() {
     home,
     node: process.execPath,
     path: loginPath(process.env.PATH ?? ''),
+    name: values.name,
+    port,
+    envFile: values['env-file'] === undefined ? undefined : resolve(values['env-file']),
   }
 
   const mkdir = (dir: string) => {

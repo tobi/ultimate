@@ -39,6 +39,21 @@ it("renders the project's ultimate unit with absolute paths", () => {
   expect(line(ultimate, 'WantedBy')).toEqual(['WantedBy=default.target'])
 })
 
+it('names, pins and feeds a second project beside the first', () => {
+  const [unit] = renderUnits({
+    ...options,
+    name: 'my-app',
+    port: 4748,
+    envFile: '/home/u/.cache/proxy-key',
+  })
+  expect(unit.name).toEqual('ultimate-my-app.service')
+  expect(line(unit.content, 'Environment')).toContain('Environment=ULTIMATE_PORT=4748')
+  expect(line(unit.content, 'EnvironmentFile')).toEqual([
+    'EnvironmentFile=/home/u/.cache/proxy-key',
+  ])
+  expect(line(renderUnits(options)[0].content, 'EnvironmentFile')).toEqual([])
+})
+
 it('lets the supervisor stop its children before systemd force-kills the group', () => {
   const [unit] = renderUnits(options)
   expect(line(unit.content, 'KillMode')).toEqual(['KillMode=mixed'])
